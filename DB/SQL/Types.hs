@@ -6,6 +6,7 @@ module DB.SQL.Types
        , Constraint(..)
        , Table(..)
        , Column(..)
+       , SQLTable
        
        , SQLType(..)
        , IntType(..)
@@ -41,6 +42,8 @@ data Table a
          , tabColumns     :: [Column a]
 	 , tabConstraints :: [Constraint]
 	 }
+
+type SQLTable = Table SQLType
 
 -- We parameterize over column type, since SQL engines
 -- do tend to provide their own set of supported datatypes

@@ -9,7 +9,6 @@ module SQLite
        , insertRow        -- :: SQLite -> TableName -> [(ColumnName, String)] -> IO ()
        , defineTable      -- :: SQLite -> SQLTable  -> IO ()
        
-       , SQLTable
        ) where
 
 import SQLite.Types
@@ -36,8 +35,6 @@ closeConnection :: SQLite -> IO ()
 closeConnection h = sqlite3_close h >> return ()
 
 type Row = [(ColumnName,String)]
-
-type SQLTable = Table SQLType
 
 defineTable :: SQLite
 	    -> SQLTable
