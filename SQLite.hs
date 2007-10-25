@@ -1,6 +1,7 @@
 module SQLite
        ( module SQLite.Base
        , module SQLite.Types
+       , module DB.SQL.Types
        
        , openConnection   -- :: String -> IO SQLite
        , execStatement    -- :: SQLite -> String -> IO ()
