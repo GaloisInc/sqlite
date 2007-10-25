@@ -112,7 +112,7 @@ showType t =
           TINY   -> "TINYINT"
 	  SMALL  -> "SMALLINT"
 	  MEDIUM -> "MEDIUMINT"
-	  NORMAL -> "INT"
+	  NORMAL -> "INTEGER"
 	  BIG    -> "BIGINT")
     SQLDecimal mbDig mbScale -> 
         "DECIMAL" ++ 
@@ -140,7 +140,7 @@ showClause c =
       | flg       -> "NULL"
       | otherwise -> "NOT NULL"
     DefaultValue x -> "DEFAULT " ++ toSQLString x
-    AutoIncrement  -> "AUTO INCREMENT"
+    AutoIncrement  -> "AUTOINCREMENT"
     PrimaryKey     -> "PRIMARY KEY"
     ForeignKey tb cs -> "FOREIGN KEY " ++ tb ++ '(':concat (intersperse ", " cs) ++ ")"
     Clustered flg
