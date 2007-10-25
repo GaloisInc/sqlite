@@ -1,0 +1,11 @@
+Name:            sqlite
+Version:         0.1
+Build-depends:   base
+Description:     Haskell binding to SQLite
+Ghc-options:     -Wall -XForeignFunctionInterface -XGeneralizedNewtypeDeriving -I.
+C-Sources:       stubs.c
+Cc-options:      -Wall -I.
+Extra-Libraries: sqlite3
+-- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
+data-files:      README sqlite3-local.h tests/Main.hs tests/Setup.hs tests/sqlite-tests.cabal tests/test.db sqlite.buildinfo sqlite.buildinfo.win32 tests/sqlite-tests.buildinfo tests/sqlite-tests.buildinfo.win32
+Exposed-modules: SQLite.Types, SQLite.Base, SQLite, DB.SQL.Types

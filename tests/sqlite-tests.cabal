@@ -1,0 +1,20 @@
+name:           sqlite-tests
+cabal-version:  >= 1.2.0
+version:        0.1
+
+flag new-base {
+  description: Build with new smaller base library
+  default: False
+}
+
+executable sqlite-test {
+  build-depends:        base, sqlite
+  if flag(new-base) {
+    build-depends: base >= 2.1
+  } else {
+    build-depends: base == 2.0 || == 2.1.1
+  }
+
+  main-is:              Main.hs
+  ghc-options:          -Wall -fglasgow-exts -lsqlite3
+}

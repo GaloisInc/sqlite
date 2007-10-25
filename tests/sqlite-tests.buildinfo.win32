@@ -1,0 +1,1 @@
+ghc-options: -Lc:/src/sqlite-3.5.1/ 
