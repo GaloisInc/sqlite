@@ -1,5 +1,5 @@
 Name:            sqlite
-Version:         0.1
+Version:         0.1.1
 Build-depends:   base
 Description:     Haskell binding to SQLite
 Ghc-options:     -Wall -XForeignFunctionInterface -XGeneralizedNewtypeDeriving -I.
