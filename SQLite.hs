@@ -9,6 +9,9 @@ module SQLite
        , insertRow        -- :: SQLite -> TableName -> [(ColumnName, String)] -> IO ()
        , defineTable      -- :: SQLite -> SQLTable  -> IO ()
        
+       , getLastRowID
+       , Row
+       
        ) where
 
 import SQLite.Types
@@ -45,11 +48,16 @@ defineTable h tab = do
  where
   createTable t = 
     "CREATE TABLE " ++ toSQLString (tabName t) ++ 
-    tupled (map toCols (tabColumns t))
+    tupled (map toCols (tabColumns t)) ++ ";"
 
   toCols col = 
     toSQLString (colName col) ++ " " ++ showType (colType col) ++ 
-    concatMap showClause (colClauses col)
+    ' ':unwords (map showClause (colClauses col))
+
+getLastRowID :: SQLite -> IO Integer
+getLastRowID h = do
+  v <- sqlite3_last_insert_rowid h
+  return (fromIntegral v)
 
 insertRow :: SQLite
 	  -> TableName
