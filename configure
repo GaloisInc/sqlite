@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+#
+UNAME=uname
+case `${UNAME} -a` in
+  *MINGW* | *CYGWIN* )
+  	  echo "Windows platform... using .buildinfo.win32"
+  	  cp sqlite.buildinfo.win32 sqlite.buildinfo
+	  ;;
+  *)
+  	  echo "UNIXy platform... using .buildinfo.unix"
+  	  cp sqlite.buildinfo.unix sqlite.buildinfo
+	  ;;
+esac
+
