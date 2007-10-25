@@ -452,7 +452,7 @@ foreign import ccall "sqlite3.h sqlite3_create_function"
 			  -> IO CInt
 
 foreign import ccall "sqlite3.h sqlite3_value_blob"
-  sqlite3_value_blob :: SQLiteValue -> IO SQLiteBlob
+  sqlite3_value_blob :: SQLiteValue -> IO SQLiteBLOB
 
 foreign import ccall "sqlite3.h sqlite3_value_bytes"
   sqlite3_value_bytes :: SQLiteValue -> IO CInt
@@ -671,18 +671,18 @@ foreign import ccall "sqlite3.h sqlite3_blob_open"
 	  -> CString
 	  -> SQLiteInt64
 	  -> Bool
-	  -> Ptr SQLiteBlob
+	  -> Ptr SQLiteBLOB
 	  -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_blob_close"
-  sqlite3_blob_close :: SQLiteBlob -> IO Status
+  sqlite3_blob_close :: SQLiteBLOB -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_blob_bytes"
-  sqlite3_blob_bytes :: SQLiteBlob -> IO CInt
+  sqlite3_blob_bytes :: SQLiteBLOB -> IO CInt
 
 foreign import ccall "sqlite3.h sqlite3_blob_read"
-  sqlite3_blob_read :: SQLiteBlob -> Ptr () -> CInt -> CInt -> IO Status
+  sqlite3_blob_read :: SQLiteBLOB -> Ptr () -> CInt -> CInt -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_blob_write"
-  sqlite3_blob_write :: SQLiteBlob -> Ptr () -> CInt -> CInt -> IO Status
+  sqlite3_blob_write :: SQLiteBLOB -> Ptr () -> CInt -> CInt -> IO Status
 

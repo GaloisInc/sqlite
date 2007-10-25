@@ -17,34 +17,34 @@ newtype SQLiteStmt = SQLiteStmt (Ptr ()) deriving Storable
 newtype SQLiteValue = SQLiteValue (Ptr ()) deriving Storable
 newtype SQLiteContext = SQLiteContext (Ptr ()) deriving Storable
 newtype SQLiteContextBuffer = SQLiteContextBuffer (Ptr ()) deriving Storable
-newtype SQLiteBlob = SQLiteBlob (Ptr ()) deriving Storable
+newtype SQLiteBLOB = SQLiteBLOB (Ptr ()) deriving Storable
 newtype SQLiteCallback a = SQLiteCallback (FunPtr a) deriving Storable
 -- don't use it much, so leave it as a bare pointer.
 type SQLiteCallbackUserData = Ptr ()
 
 data SQLiteType
- = SQLInt
- | SQLFloat
- | SQLText
- | SQLBlob
- | SQLNull
+ = SQLiteInt
+ | SQLiteFloat
+ | SQLiteText
+ | SQLiteBlob
+ | SQLiteNull
    deriving ( Eq )
 
 instance Enum SQLiteType where
   fromEnum e = 
     case e of
-      SQLInt   -> 1
-      SQLFloat -> 2
-      SQLText  -> 3
-      SQLBlob  -> 4
-      SQLNull  -> 5
+      SQLiteInt   -> 1
+      SQLiteFloat -> 2
+      SQLiteText  -> 3
+      SQLiteBlob  -> 4
+      SQLiteNull  -> 5
   toEnum x = 
     case x of
-      1 -> SQLInt
-      2 -> SQLFloat
-      3 -> SQLText
-      4 -> SQLBlob
-      5 -> SQLNull
+      1 -> SQLiteInt
+      2 -> SQLiteFloat
+      3 -> SQLiteText
+      4 -> SQLiteBlob
+      5 -> SQLiteNull
       _ -> error ("toEnum{SQLiteType}: unknown type tag " ++ show x)
 
 
