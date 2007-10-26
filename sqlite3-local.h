@@ -1,5 +1,7 @@
 #ifndef __SQLITE3_LOCAL_H
 #define __SQLITE3_LOCAL_H
+#include "sqlite3.h"
+
 extern void sqlite3_set_temp_directory(char* x);
 extern char *sqlite3_get_temp_directory();
 
