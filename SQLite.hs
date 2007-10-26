@@ -64,17 +64,19 @@ insertRow :: SQLite
 	  -> [(ColumnName, String)]
 	  -> IO ()
 insertRow h tab cs = do
-   execStatement h ("INSERT INTO " ++ tab ++ 
-                    tupled (toVals fst) ++ " VALUES " ++
-		    tupled (toVals snd))
+   let stmt = ("INSERT INTO " ++ tab ++ 
+               tupled (toVals fst) ++ " VALUES " ++
+	       tupled (toVals snd) ++ ";")
+   execStatement h stmt
    return ()
   where
    toVals f = map (toVal f) cs
    
-   toVal f p = '\'':toSQLString (f p) ++ "'"
+   toVal f p = f p
    
 execStatement :: SQLite -> String -> IO (Maybe [Row])
-execStatement h sqlStmt = 
+execStatement h sqlStmt = do
+-- putStrLn sqlStmt
  alloca $ \ p_errMsg -> 
   withCString sqlStmt $ \ c_sqlStmt -> do
     m_rows <- newIORef []
