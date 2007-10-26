@@ -1,11 +1,18 @@
 Name:            sqlite
 Version:         0.1.1
+Copyright:       BSD3
 Build-depends:   base
-Description:     Haskell binding to SQLite
+Synopsis:        Haskell binding to SQLite
+Description:	 Haskell binding to SQLite. A Galois-local git(1) repository is
+                 also available, to use do:
+		 
+		    foo$ git clone ssh://docserver/var/www/sqlite.git sqlite
+
+
 Ghc-options:     -Wall -XForeignFunctionInterface -XGeneralizedNewtypeDeriving -I.
 C-Sources:       stubs.c
 Cc-options:      -Wall -I.
 Extra-Libraries: sqlite3
 -- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
-data-files:      README configure sqlite3-local.h tests/Main.hs tests/Setup.hs tests/sqlite-tests.cabal tests/test.db sqlite.buildinfo.unix sqlite.buildinfo.win32 tests/sqlite-tests.buildinfo.unix tests/sqlite-tests.buildinfo.win32 tests/configure
+extra-source-files:      README configure sqlite3-local.h tests/Main.hs tests/Setup.hs tests/sqlite-tests.cabal tests/test.db sqlite.buildinfo.unix sqlite.buildinfo.win32 tests/sqlite-tests.buildinfo.unix tests/sqlite-tests.buildinfo.win32 tests/configure
 Exposed-modules: SQLite.Types, SQLite.Base, SQLite, DB.SQL.Types
