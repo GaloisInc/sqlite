@@ -2,3 +2,6 @@
 *.hi
 dist
 *~
+.installed-pkg-config
+.setup-config
+
