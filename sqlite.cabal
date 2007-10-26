@@ -13,7 +13,8 @@ Description:	 Haskell binding to SQLite. A Galois-local git(1) repository is
 		    foo$ git clone ssh://docserver/var/www/sqlite.git sqlite
 
 
-Ghc-options:     -Wall -XForeignFunctionInterface -XGeneralizedNewtypeDeriving -I.
+Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving
+Ghc-options:     -Wall -I.
 C-Sources:       stubs.c
 Cc-options:      -Wall -I.
 Extra-Libraries: sqlite3
