@@ -13,17 +13,15 @@ Description:
   A Galois-local git(1) repository is
   also available, to use: git clone ssh://docserver/var/www/sqlite.git sqlite
 Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving
-Ghc-options:     -O2 -Wall
-Cc-options:      -Wall
-Include-dirs:	 include
-Includes:        sqlite3-local.h
-C-Sources:       cbits/sqlite3-local.c
+Ghc-options:     -O2 -Wall -I.
+C-Sources:       stubs.c
+Cc-options:      -Wall -I.
 Extra-Libraries: sqlite3
 -- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
 extra-source-files:      
     README configure
+    sqlite3-local.h
     sqlite.buildinfo.unix sqlite.buildinfo.win32 
-    include/sqlite3-local.h
     tests/configure tests/Main.hs tests/Setup.hs 
     tests/sqlite-tests.cabal
     tests/test.db tests/sqlite-tests.buildinfo.unix 
