@@ -1,17 +1,31 @@
+--------------------------------------------------------------------
+-- |
+-- Module    : SQLite
+-- Copyright : (c) Galois, Inc. 2007
+-- License   : BSD3
+--
+-- Maintainer:
+-- Stability : provisional
+-- Portability:
+--
+--------------------------------------------------------------------
+--
+-- A binding to sqlite3
+
 module SQLite
        ( module SQLite.Base
        , module SQLite.Types
        , module DB.SQL.Types
-       
+
        , openConnection   -- :: String -> IO SQLite
        , execStatement    -- :: SQLite -> String -> IO ()
        , closeConnection  -- :: SQLite -> IO ()
        , insertRow        -- :: SQLite -> TableName -> [(ColumnName, String)] -> IO ()
        , defineTable      -- :: SQLite -> SQLTable  -> IO ()
-       
+
        , getLastRowID
        , Row
-       
+
        ) where
 
 import SQLite.Types
@@ -28,29 +42,29 @@ import Data.List
 openConnection :: String -> IO SQLite
 openConnection dbName = do
   ptr <- malloc
-  st  <- withCString dbName $ \ c_dbName -> 
+  st  <- withCString dbName $ \ c_dbName ->
                 sqlite3_open c_dbName ptr
   case st of
     0 -> peek ptr
     _ -> fail ("openDatabase: failed to open " ++ show st)
-		
+
 closeConnection :: SQLite -> IO ()
 closeConnection h = sqlite3_close h >> return ()
 
 type Row = [(ColumnName,String)]
 
 defineTable :: SQLite
-	    -> SQLTable
-	    -> IO ()
+            -> SQLTable
+            -> IO ()
 defineTable h tab = do
    execStatement h (createTable tab)
    return ()
  where
   createTable t = 
-    "CREATE TABLE " ++ toSQLString (tabName t) ++ 
+    "CREATE TABLE " ++ toSQLString (tabName t) ++
     tupled (map toCols (tabColumns t)) ++ ";"
 
-  toCols col = 
+  toCols col =
     toSQLString (colName col) ++ " " ++ showType (colType col) ++ 
     ' ':unwords (map showClause (colClauses col))
 
@@ -60,24 +74,24 @@ getLastRowID h = do
   return (fromIntegral v)
 
 insertRow :: SQLite
-	  -> TableName
-	  -> [(ColumnName, String)]
-	  -> IO ()
+          -> TableName
+          -> [(ColumnName, String)]
+          -> IO ()
 insertRow h tab cs = do
-   let stmt = ("INSERT INTO " ++ tab ++ 
+   let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
-	       tupled (toVals snd) ++ ";")
+               tupled (toVals snd) ++ ";")
    execStatement h stmt
    return ()
   where
    toVals f = map (toVal f) cs
-   
+
    toVal f p = f p
-   
+
 execStatement :: SQLite -> String -> IO (Maybe [Row])
 execStatement h sqlStmt = do
 -- putStrLn sqlStmt
- alloca $ \ p_errMsg -> 
+ alloca $ \ p_errMsg ->
   withCString sqlStmt $ \ c_sqlStmt -> do
     m_rows <- newIORef []
     hdlr <- mkExecHandler (execHandler m_rows)
@@ -85,7 +99,7 @@ execStatement h sqlStmt = do
     case st of
       0 -> do
         ls <- readIORef m_rows
-	return (Just ls)
+        return (Just ls)
       _x -> return Nothing
  where
   execHandler ref _unused cols pCols pColNames = do
