@@ -2,6 +2,7 @@ Name:            sqlite
 Version:         0.1.1
 License:         BSD3
 License-file:    LICENSE
+Homepage:        http://docserver.galois.com/sqlite.git/
 Copyright: 
   Copyright (c) 2007, Galois
   Copyright (c) 2007, sof
@@ -12,10 +13,21 @@ Description:
   A Galois-local git(1) repository is
   also available, to use: git clone ssh://docserver/var/www/sqlite.git sqlite
 Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving
-Ghc-options:     -Wall -I.
+Ghc-options:     -O2 -Wall -I.
 C-Sources:       stubs.c
 Cc-options:      -Wall -I.
 Extra-Libraries: sqlite3
 -- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
-extra-source-files:      README configure sqlite3-local.h tests/Main.hs tests/Setup.hs tests/sqlite-tests.cabal tests/test.db sqlite.buildinfo.unix sqlite.buildinfo.win32 tests/sqlite-tests.buildinfo.unix tests/sqlite-tests.buildinfo.win32 tests/configure
-Exposed-modules: SQLite.Types, SQLite.Base, SQLite, DB.SQL.Types
+extra-source-files:      
+    README configure
+    sqlite3-local.h
+    sqlite.buildinfo.unix sqlite.buildinfo.win32 
+    tests/configure tests/Main.hs tests/Setup.hs 
+    tests/sqlite-tests.cabal
+    tests/test.db tests/sqlite-tests.buildinfo.unix 
+    tests/sqlite-tests.buildinfo.win32 
+Exposed-modules:
+    SQLite, 
+    SQLite.Base,
+    SQLite.Types,
+    DB.SQL.Types
