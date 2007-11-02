@@ -8,17 +8,11 @@ case `${UNAME} -a` in
   	  cp sqlite.buildinfo.win32 sqlite.buildinfo
 	  ;;
   *)
-  	  echo "UNIXy platform... using .buildinfo.unix"
-  	  cp sqlite.buildinfo.unix sqlite.buildinfo.in
-
       # subst standard header path variables
       if test -n "$CPPFLAGS" ; then
-  	      echo "Found CPPFLAGS in environment: '$CPPFLAGS'"
-          sed 's,@CPPFLAGS@,'$CPPFLAGS',g' < sqlite.buildinfo.in > sqlite.buildinfo
-      else
-          cp sqlite.buildinfo.in sqlite.buildinfo
+          echo "Found CPPFLAGS in environment: '$CPPFLAGS'"
+          sed 's,@CPPFLAGS@,'$CPPFLAGS',g' < sqlite.buildinfo.unix > sqlite.buildinfo
       fi
-      rm sqlite.buildinfo.in
 	  ;;
 esac
 

@@ -28,6 +28,8 @@ extra-source-files:
     tests/sqlite-tests.cabal
     tests/test.db tests/sqlite-tests.buildinfo.unix 
     tests/sqlite-tests.buildinfo.win32 
+extra-tmp-files:
+    sqlite.buildinfo
 Exposed-modules:
     SQLite, 
     SQLite.Base,
