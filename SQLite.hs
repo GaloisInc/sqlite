@@ -18,6 +18,10 @@
 --
 -- for more information.
 --
+-- The api is documented at:
+--
+-- * <http://www.sqlite.org/c3ref/funclist.html>
+--
 
 module SQLite
        ( module SQLite.Base
