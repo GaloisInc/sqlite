@@ -1,28 +1,39 @@
 --------------------------------------------------------------------
 -- |
--- Module    : SQLite
--- Copyright : (c) Galois, Inc. 2007
--- License   : BSD3
+-- Module    :  SQLite
+-- Copyright :  (c) Galois, Inc. 2007
+-- License   :  BSD3
 --
--- Maintainer:
--- Stability : provisional
--- Portability:
+-- Maintainer:  docserver-dev-team@galois.com
+-- Stability :  provisional
+-- Portability: portable
 --
 --------------------------------------------------------------------
 --
--- A binding to sqlite3
+-- A Haskell binding to the sqlite3 database.
+--
+-- See
+--
+-- * <http://www.sqlite.org/>
+--
+-- for more information.
+--
 
 module SQLite
        ( module SQLite.Base
        , module SQLite.Types
        , module DB.SQL.Types
 
+       -- * Opening and closing a database
        , openConnection   -- :: String -> IO SQLite
-       , execStatement    -- :: SQLite -> String -> IO ()
        , closeConnection  -- :: SQLite -> IO ()
-       , insertRow        -- :: SQLite -> TableName -> [(ColumnName, String)] -> IO ()
-       , defineTable      -- :: SQLite -> SQLTable  -> IO ()
 
+       -- * Executing SQL queries on the database
+       , execStatement    -- :: SQLite -> String -> IO ()
+
+       -- * Basic insertion operations
+       , insertRow
+       , defineTable
        , getLastRowID
        , Row
 
@@ -39,6 +50,13 @@ import Foreign.Ptr
 import Data.IORef
 import Data.List
 
+------------------------------------------------------------------------
+
+-- | Open a new database connection, whose name is given
+-- by the 'dbName' argument. A sqlite3 handle is returned.
+--
+-- An exception is thrown if the database could not be opened.
+--
 openConnection :: String -> IO SQLite
 openConnection dbName = do
   ptr <- malloc
@@ -48,35 +66,35 @@ openConnection dbName = do
     0 -> peek ptr
     _ -> fail ("openDatabase: failed to open " ++ show st)
 
+-- | Close a database connection.
+-- Destroys the SQLite value associated with a database, closes
+-- all open files relating to the database, and releases all resources.
+--
 closeConnection :: SQLite -> IO ()
 closeConnection h = sqlite3_close h >> return ()
 
+------------------------------------------------------------------------
+-- Adding data 
+
 type Row = [(ColumnName,String)]
 
-defineTable :: SQLite
-            -> SQLTable
-            -> IO ()
+-- | Define a new table, populated from 'tab' in the database.
+--
+defineTable :: SQLite -> SQLTable -> IO ()
 defineTable h tab = do
    execStatement h (createTable tab)
    return ()
  where
-  createTable t = 
+  createTable t =
     "CREATE TABLE " ++ toSQLString (tabName t) ++
     tupled (map toCols (tabColumns t)) ++ ";"
 
   toCols col =
-    toSQLString (colName col) ++ " " ++ showType (colType col) ++ 
+    toSQLString (colName col) ++ " " ++ showType (colType col) ++
     ' ':unwords (map showClause (colClauses col))
 
-getLastRowID :: SQLite -> IO Integer
-getLastRowID h = do
-  v <- sqlite3_last_insert_rowid h
-  return (fromIntegral v)
-
-insertRow :: SQLite
-          -> TableName
-          -> [(ColumnName, String)]
-          -> IO ()
+-- | Insert a row into the table 'tab'.
+insertRow :: SQLite -> TableName -> Row -> IO ()
 insertRow h tab cs = do
    let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
@@ -85,12 +103,22 @@ insertRow h tab cs = do
    return ()
   where
    toVals f = map (toVal f) cs
+   toVal f p = f p -- ^ ($ f)
 
-   toVal f p = f p
+-- | Return the rowid (as an Integer) of the most recent
+-- successful INSERT into the database.
+--
+getLastRowID :: SQLite -> IO Integer
+getLastRowID h = do
+  v <- sqlite3_last_insert_rowid h
+  return (fromIntegral v)
 
+------------------------------------------------------------------------
+-- Executing queries
+
+-- | Evaluate the SQL statement specified by 'sqlStmt'
 execStatement :: SQLite -> String -> IO (Maybe [Row])
 execStatement h sqlStmt = do
--- putStrLn sqlStmt
  alloca $ \ p_errMsg ->
   withCString sqlStmt $ \ c_sqlStmt -> do
     m_rows <- newIORef []
