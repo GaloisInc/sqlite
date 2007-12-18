@@ -10,8 +10,11 @@ Build-depends:   base
 Synopsis:        Haskell binding to SQLite
 Description:
   Haskell binding to SQLite.
+  .
   A Galois-local git(1) repository is
-  also available, to use: git clone ssh:\/\/docserver\/var\/www\/sqlite.git sqlite
+  also available, to use:
+    git clone ssh:\/\/docserver\/var\/www\/sqlite.git sqlite
+  .
 Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving
 Ghc-options:     -O2 -Wall
 Cc-options:      -Wall
