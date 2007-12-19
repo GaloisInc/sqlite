@@ -8,11 +8,8 @@
 -- Stability :  provisional
 -- Portability: portable
 --
---------------------------------------------------------------------
---
 -- A Haskell binding to the sqlite3 database.
---
--- See
+-- See:
 --
 -- * <http://www.sqlite.org/>
 --
@@ -107,7 +104,7 @@ insertRow h tab cs = do
    return ()
   where
    toVals f = map (toVal f) cs
-   toVal f p = f p -- ^ ($ f)
+   toVal f p = f p -- ($ f)
 
 -- | Return the rowid (as an Integer) of the most recent
 -- successful INSERT into the database.
