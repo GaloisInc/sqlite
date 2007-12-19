@@ -1,20 +1,17 @@
 Name:            sqlite
-Version:         0.1.1
+Version:         0.1.2
+Synopsis:        Haskell binding to sqlite3
+Description:
+    .
+    Haskell binding to sqlite3 <http://sqlite.org/>.
+    .
 License:         BSD3
 License-file:    LICENSE
 Homepage:        http://docserver.galois.com/sqlite.git/
 Copyright: 
-  Copyright (c) 2007, Galois
+  Copyright (c) 2007, Galois Inc
   Copyright (c) 2007, sof
 Build-depends:   base
-Synopsis:        Haskell binding to SQLite
-Description:
-  Haskell binding to SQLite.
-  .
-  A Galois-local git(1) repository is
-  also available, to use:
-    git clone ssh:\/\/docserver\/var\/www\/sqlite.git sqlite
-  .
 Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving
 Ghc-options:     -O2 -Wall
 Cc-options:      -Wall
