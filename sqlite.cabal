@@ -8,9 +8,12 @@ Description:
 License:         BSD3
 License-file:    LICENSE
 Homepage:        http://docserver.galois.com/sqlite.git/
+Author:          Docserver
+Author:          docserver-devel-team@galois.com
 Copyright: 
   Copyright (c) 2007, Galois Inc
   Copyright (c) 2007, sof
+Category:        Database
 Build-depends:   base
 Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving
 Ghc-options:     -O2 -Wall
