@@ -1,13 +1,25 @@
+--------------------------------------------------------------------
+-- |
+-- Module    : DB.SQL.Types
+-- Copyright : (c) Galois, Inc. 2007
+-- License   : BSD3
+--
+-- Maintainer: Don Stewart <dons@galois.com>
+-- Stability : provisional
+-- Portability:
+--
+-- Basic embedding of SQL types in Haskell.
+--
 module DB.SQL.Types
        ( TableName
        , ColumnName
-       
+
        , Clause(..)
        , Constraint(..)
        , Table(..)
        , Column(..)
        , SQLTable
-       
+
        , SQLType(..)
        , IntType(..)
        , DateTimeType(..)
@@ -15,7 +27,7 @@ module DB.SQL.Types
 
        , showType
        , showClause
-       
+
        , toSQLString
 
        ) where
@@ -30,7 +42,7 @@ data Clause
  | DefaultValue String
  | AutoIncrement
  | PrimaryKey
- | ForeignKey TableName [ColumnName] 
+ | ForeignKey TableName [ColumnName]
  | Clustered Bool
  | Unique
 
@@ -40,21 +52,21 @@ data Constraint
 data Table a
  = Table { tabName        :: String
          , tabColumns     :: [Column a]
-	 , tabConstraints :: [Constraint]
-	 }
+         , tabConstraints :: [Constraint]
+         }
 
 type SQLTable = Table SQLType
 
--- We parameterize over column type, since SQL engines
+-- | We parameterize over column type, since SQL engines
 -- do tend to provide their own set of supported datatypes
 -- (which may or may not map onto SQL99's set of types.)
 data Column a
  = Column { colName    :: ColumnName
           , colType    :: a
-	  , colClauses :: [Clause]
-	  }
+          , colClauses :: [Clause]
+          }
 
--- MySQL slanted, but also SQLite friendly if you don't get
+-- | MySQL slanted, but also SQLite friendly if you don't get
 -- too fancy..
 data SQLType
  = SQLBoolean
@@ -77,13 +89,13 @@ data DateTimeType
  = DATE | DATETIME | TIMESTAMP | TIME | YEAR (Maybe Int)
 
 data BlobType
- = TinyBlob 
- | NormalBlob (Maybe Int) 
- | MediumBlob 
+ = TinyBlob
+ | NormalBlob (Maybe Int)
+ | MediumBlob
  | LongBlob
 
 showType :: SQLType -> String
-showType t = 
+showType t =
   case t of
     SQLBoolean          -> "BOOLEAN"
     SQLChar    Nothing  -> "CHAR"
@@ -92,45 +104,45 @@ showType t =
     SQLBlob    bt       ->
       case bt of
          TinyBlob            -> "TINYBLOB"
-	 NormalBlob Nothing  -> "BLOB"
-	 NormalBlob (Just x) -> "BLOB("++shows x ")"
-	 MediumBlob          -> "MEDIUMBLOB"
-	 LongBlob            -> "LONGBLOB"
-        
+         NormalBlob Nothing  -> "BLOB"
+         NormalBlob (Just x) -> "BLOB("++shows x ")"
+         MediumBlob          -> "MEDIUMBLOB"
+         LongBlob            -> "LONGBLOB"
+
     SQLDateTime dt ->
       case dt of
          DATE -> "DATE"
-	 DATETIME  -> "DATETIME"
-	 TIMESTAMP -> "TIMESTAMP"
-	 TIME      -> "TIME"
-	 YEAR Nothing -> "YEAR"
-	 YEAR (Just x) -> "YEAR(" ++ shows x ")"
+         DATETIME  -> "DATETIME"
+         TIMESTAMP -> "TIMESTAMP"
+         TIME      -> "TIME"
+         YEAR Nothing -> "YEAR"
+         YEAR (Just x) -> "YEAR(" ++ shows x ")"
     SQLInt it unsigned zeroFill ->
       (if unsigned then (++" UNSIGNED") else id) $
        (if zeroFill then (++" ZEROFILL") else id) $
         (case it of
           TINY   -> "TINYINT"
-	  SMALL  -> "SMALLINT"
-	  MEDIUM -> "MEDIUMINT"
-	  NORMAL -> "INTEGER"
-	  BIG    -> "BIGINT")
+          SMALL  -> "SMALLINT"
+          MEDIUM -> "MEDIUMINT"
+          NORMAL -> "INTEGER"
+          BIG    -> "BIGINT")
     SQLDecimal mbDig mbScale -> 
         "DECIMAL" ++ 
-	case sequence [mbDig,mbScale] of 
-	   Nothing -> ""
-	   Just xs -> '(':concat (intersperse "," (map show xs)) ++ ")"
+        case sequence [mbDig,mbScale] of 
+           Nothing -> ""
+           Just xs -> '(':concat (intersperse "," (map show xs)) ++ ")"
     SQLFloat mbDig mbScale -> 
         "FLOAT" ++ 
-	case sequence [mbDig,mbScale] of 
-	   Nothing -> ""
-	   Just xs -> '(':concat (intersperse "," (map show xs)) ++ ")"
+        case sequence [mbDig,mbScale] of 
+           Nothing -> ""
+           Just xs -> '(':concat (intersperse "," (map show xs)) ++ ")"
     SQLEnum tgs ->  
         "ENUM(" ++ toTags tgs ++ ")"
     SQLSet tgs -> 
         "SET(" ++ toTags tgs ++ ")"
   where
     toTags xs = concat $ intersperse "," (map quote xs)
-    
+
     quote nm = '\'':nm ++ "'"
 
 showClause :: Clause -> String

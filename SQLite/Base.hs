@@ -1,4 +1,20 @@
-module SQLite.Base 
+--------------------------------------------------------------------
+-- |
+-- Module    : SQLite.Base
+-- Copyright : (c) Galois, Inc. 2007
+-- License   : BSD3
+--
+-- Maintainer: Don Stewart <dons@galois.com>
+-- Stability : provisional
+-- Portability:
+--
+-- Bindings to the SQLite C interface.
+--
+-- The documentation for these functions is at:
+--
+-- * <http://www.sqlite.org/c3ref/funclist.html>
+--
+module SQLite.Base
        ( sqlite3_libversion
        , sqlite3_libversion_number
        , sqlite3_close
@@ -16,7 +32,7 @@ module SQLite.Base
        , sqlite3_free_table
        , sqlite3_malloc
        , sqlite3_realloc
-       , sqlite3_free 
+       , sqlite3_free
 {-
        , sqlite3_memory_used
        , sqlite3_memory_highwater
@@ -29,7 +45,7 @@ module SQLite.Base
        , sqlite3_open16
 --       , sqlite3_open_v2
        , sqlite3_errcode
-       , sqlite3_errmsg 
+       , sqlite3_errmsg
 
        , sqlite3_prepare
 
@@ -65,7 +81,7 @@ module SQLite.Base
 
        , sqlite3_finalize
        , sqlite3_create_function
-       
+
        , sqlite3_value_blob
        , sqlite3_value_bytes
        , sqlite3_value_bytes16
@@ -85,7 +101,7 @@ module SQLite.Base
 
        , sqlite3_static_destructor
        , sqlite3_transient_destructor
-       
+
        , sqlite3_result_blob
        , sqlite3_result_double
        , sqlite3_result_error
@@ -103,7 +119,7 @@ module SQLite.Base
        , sqlite3_result_text16be
        , sqlite3_result_value
        , sqlite3_result_zeroblob
-       
+
        , sqlite3_create_collation
        , sqlite3_create_collation16
        , sqlite3_create_collation_v2
@@ -159,7 +175,7 @@ import Foreign.Ptr
 -- the various callback function types and constructors for their
 -- Haskell wrappers:
 
-type ExecHandler 
+type ExecHandler
   =  SQLiteCallbackUserData
   -> CInt
   -> Ptr CString
@@ -174,7 +190,7 @@ type FreeHandler = SQLiteCallbackUserData -> IO ()
 foreign import ccall "wrapper"
    mkFreeHandler :: FreeHandler -> IO (SQLiteCallback FreeHandler)
 
-type UpdateHook 
+type UpdateHook
   = SQLiteCallbackUserData
   -> CInt
   -> CString
@@ -194,7 +210,7 @@ foreign import ccall "wrapper"
 type FinalizeContextHandler = SQLiteContext -> IO ()
 
 foreign import ccall "wrapper"
-   mkFinalizeContextHandler 
+   mkFinalizeContextHandler
      :: FinalizeContextHandler
      -> IO (SQLiteCallback FinalizeContextHandler)
 
@@ -251,15 +267,15 @@ foreign import ccall "sqlite3.h sqlite3_close"
 
 foreign import ccall "sqlite3.h sqlite3_exec"
   sqlite3_exec :: SQLite
-               -> CString 
+               -> CString
                -> SQLiteCallback ExecHandler
                -> SQLiteCallbackUserData
-	       -> Ptr CString
-	       -> IO Status
+               -> Ptr CString
+               -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_extended_result_codes"
   sqlite3_extended_result_codes :: SQLite -> Bool -> IO Status
-  
+
 foreign import ccall "sqlite3.h sqlite3_last_insert_rowid"
   sqlite3_last_insert_rowid :: SQLite -> IO SQLiteInt64
 
@@ -287,11 +303,11 @@ foreign import ccall "sqlite3.h sqlite3_busy_timeout"
 foreign import ccall "sqlite3.h sqlite3_get_table"
   sqlite3_get_table :: SQLite
                     -> CString
-		    -> Ptr (Ptr CString)
-		    -> Ptr CInt
-		    -> Ptr CInt
-		    -> Ptr (Ptr CString)
-		    -> IO Status
+                    -> Ptr (Ptr CString)
+                    -> Ptr CInt
+                    -> Ptr CInt
+                    -> Ptr (Ptr CString)
+                    -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_free_table"
   sqlite3_free_table :: Ptr (Ptr CString) -> IO ()
@@ -443,13 +459,13 @@ foreign import ccall "sqlite3.h sqlite3_finalize"
 foreign import ccall "sqlite3.h sqlite3_create_function"
   sqlite3_create_function :: SQLite
                           -> CString
-			  -> CInt
+                          -> CInt
                           -> TextEncodeFlag
-  			  -> SQLiteCallbackUserData
+                          -> SQLiteCallbackUserData
                           -> SQLiteCallback StepHandler
-			  -> SQLiteCallback StepHandler
-			  -> SQLiteCallback FinalizeContextHandler
-			  -> IO CInt
+                          -> SQLiteCallback StepHandler
+                          -> SQLiteCallback FinalizeContextHandler
+                          -> IO CInt
 
 foreign import ccall "sqlite3.h sqlite3_value_blob"
   sqlite3_value_blob :: SQLiteValue -> IO SQLiteBLOB
@@ -534,14 +550,14 @@ foreign import ccall "sqlite3.h sqlite3_result_null"
 foreign import ccall "sqlite3.h sqlite3_result_text"
   sqlite3_result_text :: SQLiteContext
                       -> CString
-		      -> CInt
+                      -> CInt
                       -> SQLiteCallback FreeHandler
-		      -> IO ()
+                      -> IO ()
 
 foreign import ccall "sqlite3.h sqlite3_result_text16"
   sqlite3_result_text16 :: SQLiteContext -> SQLiteUTF16 -> CInt
                         -> SQLiteCallback FreeHandler
-			-> IO ()
+                        -> IO ()
 
 foreign import ccall "sqlite3.h sqlite3_result_text16le"
   sqlite3_result_text16le :: SQLiteContext -> SQLiteUTF16 -> CInt
@@ -560,33 +576,33 @@ foreign import ccall "sqlite3.h sqlite3_result_zeroblob"
 foreign import ccall "sqlite3.h sqlite3_create_collation"
   sqlite3_create_collation 
           :: SQLite -> CString -> TextEncodeFlag
-	  -> SQLiteCallbackUserData
+          -> SQLiteCallbackUserData
           -> SQLiteCallback CompareHandler
-	  -> IO Status
+          -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_create_collation16"
   sqlite3_create_collation16
           :: SQLite -> SQLiteUTF16 -> TextEncodeFlag
           -> SQLiteCallbackUserData
           -> SQLiteCallback CompareHandler
-	  -> IO Status
+          -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_create_collation_v2"
   sqlite3_create_collation_v2 :: SQLite -> CString -> TextEncodeFlag
                               -> SQLiteCallbackUserData
                               -> SQLiteCallback CompareHandler
-			      -> SQLiteCallback FreeHandler
-			      -> IO Status
+                              -> SQLiteCallback FreeHandler
+                              -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_collation_needed"
   sqlite3_collation_needed :: SQLite -> SQLiteCallbackUserData
                            -> SQLiteCallback CollationHandler
-			   -> IO Status
+                           -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_collation_needed16"
   sqlite3_collation_needed16 :: SQLite -> SQLiteCallbackUserData
                              -> SQLiteCallback CollationHandler16
-			     -> IO Status
+                             -> IO Status
 
 {-
 foreign import ccall "sqlite3.h sqlite3_key"
@@ -613,20 +629,20 @@ foreign import ccall "sqlite3.h sqlite3_db_handle"
 foreign import ccall "sqlite3.h sqlite3_commit_hook"
   sqlite3_commit_hook :: SQLite
                       -> SQLiteCallback FilterHandler
-		      -> SQLiteCallbackUserData
-		      -> IO (SQLiteCallback FilterHandler)
+                      -> SQLiteCallbackUserData
+                      -> IO (SQLiteCallback FilterHandler)
 
 foreign import ccall "sqlite3.h sqlite3_rollback_hook"
   sqlite3_rollback_hook :: SQLite
                         -> SQLiteCallback FreeHandler
-		        -> SQLiteCallbackUserData
-		        -> IO (SQLiteCallback FreeHandler)
+                        -> SQLiteCallbackUserData
+                        -> IO (SQLiteCallback FreeHandler)
 
 foreign import ccall "sqlite3.h sqlite3_update_hook"
   sqlite3_update_hook :: SQLite
                       -> SQLiteCallback UpdateHook
-		      -> SQLiteCallbackUserData
-		      -> IO (SQLiteCallback FreeHandler)
+                      -> SQLiteCallbackUserData
+                      -> IO (SQLiteCallback FreeHandler)
 
 foreign import ccall "sqlite3.h sqlite3_enable_shared_cache"
   sqlite3_enable_shared_cache :: CInt -> IO CInt
@@ -642,14 +658,14 @@ foreign import ccall "sqlite3.h sqlite3_table_column_metadata"
   sqlite3_table_column_metadata 
           :: SQLite
           -> CString
-	  -> CString
-	  -> CString
-	  -> Ptr CString
-	  -> Ptr CString
-	  -> Ptr Bool
-	  -> Ptr Bool
-	  -> Ptr Bool
-	  -> IO Status
+          -> CString
+          -> CString
+          -> Ptr CString
+          -> Ptr CString
+          -> Ptr Bool
+          -> Ptr Bool
+          -> Ptr Bool
+          -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_load_extension"
   sqlite3_load_extension :: SQLite -> CString -> CString -> Ptr CString -> IO Status
@@ -664,15 +680,15 @@ foreign import ccall "sqlite3.h sqlite3_reset_auto_extension"
   sqlite3_reset_auto_extension :: IO ()
 -}
 foreign import ccall "sqlite3.h sqlite3_blob_open"
-  sqlite3_blob_open 
+  sqlite3_blob_open
           :: SQLite
           -> CString
-	  -> CString
-	  -> CString
-	  -> SQLiteInt64
-	  -> Bool
-	  -> Ptr SQLiteBLOB
-	  -> IO Status
+          -> CString
+          -> CString
+          -> SQLiteInt64
+          -> Bool
+          -> Ptr SQLiteBLOB
+          -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_blob_close"
   sqlite3_blob_close :: SQLiteBLOB -> IO Status
