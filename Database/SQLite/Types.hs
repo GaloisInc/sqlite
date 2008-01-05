@@ -1,6 +1,6 @@
 --------------------------------------------------------------------
 -- |
--- Module    :  SQLite.Types
+-- Module    :  Database.SQLite.Types
 -- Copyright :  (c) Galois, Inc. 2007
 -- License   :  BSD3
 --
@@ -12,7 +12,7 @@
 --
 --------------------------------------------------------------------
 
-module SQLite.Types where
+module Database.SQLite.Types where
 
 import Foreign.C
 import Foreign.Ptr

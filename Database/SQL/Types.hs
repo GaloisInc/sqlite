@@ -1,6 +1,6 @@
 --------------------------------------------------------------------
 -- |
--- Module    : DB.SQL.Types
+-- Module    : Database.SQL.Types
 -- Copyright : (c) Galois, Inc. 2007
 -- License   : BSD3
 --
@@ -10,7 +10,7 @@
 --
 -- Basic embedding of SQL types in Haskell.
 --
-module DB.SQL.Types
+module Database.SQL.Types
        ( TableName
        , ColumnName
 

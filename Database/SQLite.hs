@@ -20,10 +20,10 @@
 -- * <http://www.sqlite.org/c3ref/funclist.html>
 --
 
-module SQLite
-       ( module SQLite.Base
-       , module SQLite.Types
-       , module DB.SQL.Types
+module Database.SQLite
+       ( module Database.SQLite.Base
+       , module Database.SQLite.Types
+       , module Database.SQL.Types
 
        -- * Opening and closing a database
        , openConnection   -- :: String -> IO SQLite
@@ -40,9 +40,9 @@ module SQLite
 
        ) where
 
-import SQLite.Types
-import SQLite.Base
-import DB.SQL.Types
+import Database.SQLite.Types
+import Database.SQLite.Base
+import Database.SQL.Types
 
 import Foreign.Marshal
 import Foreign.C

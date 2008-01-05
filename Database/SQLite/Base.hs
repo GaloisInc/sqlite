@@ -1,6 +1,6 @@
 --------------------------------------------------------------------
 -- |
--- Module    : SQLite.Base
+-- Module    : Database.SQLite.Base
 -- Copyright : (c) Galois, Inc. 2007
 -- License   : BSD3
 --
@@ -14,7 +14,7 @@
 --
 -- * <http://www.sqlite.org/c3ref/funclist.html>
 --
-module SQLite.Base
+module Database.SQLite.Base
        ( sqlite3_libversion
        , sqlite3_libversion_number
        , sqlite3_close
@@ -167,7 +167,7 @@ module SQLite.Base
        , mkCollationHandler16
        ) where
 
-import SQLite.Types
+import Database.SQLite.Types
 
 import Foreign.C
 import Foreign.Ptr
