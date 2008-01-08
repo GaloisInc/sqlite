@@ -1,22 +1,22 @@
 module Main where
 
-import SQLite
+import Database.SQLite
 
 newTable :: TableName -> Table SQLType
 newTable tName = 
   Table { tabName    = tName
         , tabColumns = 
-	    [ Column { colName    = "id"
-	             , colType    = SQLInt NORMAL False False
-		     , colClauses = [PrimaryKey,AutoIncrement]
-		     }
-	    , Column { colName    = "name"
-	             , colType    = SQLVarChar 200
-		     , colClauses = [IsNullable False]
-		     }
+            [ Column { colName    = "id"
+                     , colType    = SQLInt NORMAL False False
+                     , colClauses = [PrimaryKey,AutoIncrement]
+                     }
+            , Column { colName    = "name"
+                     , colType    = SQLVarChar 200
+                     , colClauses = [IsNullable False]
+                     }
             ]
         , tabConstraints = []
-	}
+        }
 
 main :: IO ()
 main = do
