@@ -1,6 +1,6 @@
 module Main where
 
-import SQLite
+import Database.SQLite
 
 main :: IO ()
 main  = do
