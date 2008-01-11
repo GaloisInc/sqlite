@@ -1,6 +1,6 @@
 --------------------------------------------------------------------
 -- |
--- Module    :  SQLite
+-- Module    :  Database.SQLite
 -- Copyright :  (c) Galois, Inc. 2007
 -- License   :  BSD3
 --
@@ -50,6 +50,7 @@ import Foreign.Storable
 import Foreign.Ptr
 import Data.IORef
 import Data.List
+import Data.Char ( isDigit )
 
 ------------------------------------------------------------------------
 
@@ -83,7 +84,7 @@ type Row = [(ColumnName,String)]
 --
 defineTable :: SQLite -> SQLTable -> IO ()
 defineTable h tab = do
-   execStatement h (createTable tab)
+   failOnRight "defineTable" $ execStatement h (createTable tab)
    return ()
  where
   createTable t =
@@ -99,12 +100,18 @@ insertRow :: SQLite -> TableName -> Row -> IO ()
 insertRow h tab cs = do
    let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
-               tupled (toVals snd) ++ ";")
-   execStatement h stmt
+               tupled (toVals (quote.snd)) ++ ";")
+   failOnRight "insertRow" $ execStatement h stmt
    return ()
   where
    toVals f = map (toVal f) cs
    toVal f p = f p -- ($ f)
+
+   quote "" = "''"
+   quote nm@(x:_) 
+    | isDigit x = nm
+    | otherwise = '\'':toSQLString nm ++ "'"
+
 
 -- | Return the rowid (as an Integer) of the most recent
 -- successful INSERT into the database.
@@ -117,8 +124,15 @@ getLastRowID h = do
 ------------------------------------------------------------------------
 -- Executing queries
 
+failOnRight :: String -> IO (Either a String) -> IO a
+failOnRight loc act = do
+   r <- act
+   case r of
+     Left v   -> return v
+     Right e  -> fail (loc ++ ": failed - " ++ e)
+
 -- | Evaluate the SQL statement specified by 'sqlStmt'
-execStatement :: SQLite -> String -> IO (Maybe [Row])
+execStatement :: SQLite -> String -> IO (Either [Row] String)
 execStatement h sqlStmt = do
  alloca $ \ p_errMsg ->
   withCString sqlStmt $ \ c_sqlStmt -> do
@@ -128,12 +142,20 @@ execStatement h sqlStmt = do
     case st of
       0 -> do
         ls <- readIORef m_rows
-        return (Just ls)
-      _x -> return Nothing
+        return (Left ls)
+      _x -> do
+        pstr <- peek p_errMsg
+        err <- peekCString pstr
+        return (Right err)
  where
   execHandler ref _unused cols pCols pColNames = do
-     vs <- mapM (\ i -> peekElemOff pCols i >>= peekCString) [0..(fromIntegral cols - 1)]
-     cs <- mapM (\ i -> peekElemOff pColNames i >>= peekCString) [0..(fromIntegral cols - 1)]
+     let getStr ptr i = do
+           cstr <- peekElemOff ptr i 
+	   if cstr == nullPtr
+	    then return ""
+	    else peekCString cstr
+     vs <- mapM (getStr pCols) [0..(fromIntegral cols - 1)]
+     cs <- mapM (getStr pColNames) [0..(fromIntegral cols - 1)]
      modifyIORef ref (\ ols -> (zip cs vs):ols)
      return 0
 
