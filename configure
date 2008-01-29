@@ -11,7 +11,7 @@ case `${UNAME} -a` in
       # subst standard header path variables
       if test -n "$CPPFLAGS" ; then
           echo "Found CPPFLAGS in environment: '$CPPFLAGS'"
-          sed 's,@CPPFLAGS@,'$CPPFLAGS',g' < sqlite.buildinfo.unix > sqlite.buildinfo
+          sed 's,@CPPFLAGS@,'"$CPPFLAGS"',g' < sqlite.buildinfo.unix > sqlite.buildinfo
       fi
 	  ;;
 esac
