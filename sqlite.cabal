@@ -35,4 +35,5 @@ Exposed-modules:
     Database.SQLite, 
     Database.SQLite.Base,
     Database.SQLite.Types,
+    Database.SQL
     Database.SQL.Types
