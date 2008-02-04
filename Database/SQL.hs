@@ -1,4 +1,4 @@
-module Database.SQL where
+module Database.SQL (module Database.SQL, module Database.SQL.Types) where
 
 import Database.SQL.Types
 
