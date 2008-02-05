@@ -31,12 +31,14 @@ module Database.SQLite
 
        -- * Executing SQL queries on the database
        , execStatement    -- :: SQLite -> String -> IO ()
+       , execParamStatement
 
        -- * Basic insertion operations
        , insertRow
        , defineTable
        , getLastRowID
        , Row
+       , Value(..)
 
        ) where
 
@@ -46,11 +48,13 @@ import Database.SQL.Types
 
 import Foreign.Marshal
 import Foreign.C
+import Foreign.C.String (newCStringLen, peekCString)
 import Foreign.Storable
 import Foreign.Ptr
 import Data.IORef
 import Data.List
 import Data.Char ( isDigit )
+import Control.Monad (when, (<=<))
 
 ------------------------------------------------------------------------
 
@@ -130,6 +134,81 @@ failOnRight loc act = do
    case r of
      Left v   -> return v
      Right e  -> fail (loc ++ ": failed - " ++ e)
+
+
+data Value
+  = Double Double
+  | Int CInt
+  | Int64 SQLiteInt64
+  | Text String
+  | Null
+
+foreign import ccall "stdlib.h &free"
+  p_free :: FunPtr (Ptr a -> IO ())
+
+
+-- XXX: UTF8 encode!
+-- XXX: will the destructor for TEXT be called if an error occurs?
+bindValue :: SQLiteStmt -> String -> Value -> IO Status
+bindValue stmt key value =
+  withCString key $ \ckey ->
+  sqlite3_bind_parameter_index stmt ckey >>= \ix ->
+  case value of
+    Text txt ->
+      do (cptr,len) <- newCStringLen txt
+         res <- sqlite3_bind_text stmt ix cptr (fromIntegral len) p_free
+         -- XXX: should we be doing this?
+         when (res /= sQLITE_OK) (free cptr)
+         return res
+    Null     -> sqlite3_bind_null stmt ix
+    Int x    -> sqlite3_bind_int stmt ix x
+    Int64 x  -> sqlite3_bind_int64 stmt ix x
+    Double x -> sqlite3_bind_double stmt ix x
+
+
+to_error :: SQLite -> IO (Either String a)
+to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
+
+-- XXX: We should be UTF8 encoding the queries.
+execParamStatement :: SQLite -> String -> [(String,Value)]
+                   -> IO (Either String [Row])
+execParamStatement db query params =
+  alloca $ \stmt_ptr ->
+  alloca $ \pzTail ->
+  withCString query $ \zSql ->
+    do let nByte = fromIntegral (length query)
+       res <- sqlite3_prepare db zSql nByte stmt_ptr pzTail
+       if res /= sQLITE_OK then to_error db else
+         do stmt <- peek stmt_ptr
+            ok <- bind_all stmt params
+            if ok then recv_rows stmt else to_error db
+
+  where
+  bind_all _ [] = return True
+  bind_all stmt ((k,v):xs) =
+    do res <- bindValue stmt k v
+       if res == sQLITE_OK then bind_all stmt xs else return False
+
+  recv_rows stmt =
+    do col_num <- sqlite3_column_count stmt
+       let cols = [0..col_num-1]
+       names <- mapM peekCString =<<
+                        mapM (sqlite3_column_name stmt) cols
+       -- XXX: rememeber to decode the "names"
+       get_rows stmt cols names []
+
+  get_rows stmt cols col_names rows =
+    do res <- sqlite3_step stmt
+       case () of
+         _ | res == sQLITE_ROW ->
+           do txts <- mapM (peekCString <=< sqlite3_column_text stmt) cols
+              let row = zip col_names txts
+              get_rows stmt cols col_names (row:rows)
+           | res == sQLITE_DONE -> do sqlite3_finalize stmt
+                                      return (Right (reverse rows))
+         _ -> sqlite3_finalize stmt >> to_error db
+
+
 
 -- | Evaluate the SQL statement specified by 'sqlStmt'
 execStatement :: SQLite -> String -> IO (Either [Row] String)
