@@ -54,7 +54,7 @@ import Foreign.Ptr
 import Data.IORef
 import Data.List
 import Data.Char ( isDigit )
-import Control.Monad (when, (<=<))
+import Control.Monad (when)
 import qualified Codec.Binary.UTF8.String as UTF8
 
 ------------------------------------------------------------------------
@@ -172,7 +172,6 @@ to_error :: SQLite -> IO (Either String a)
 to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
 
 
-
 execParamStatement :: SQLite -> String -> [(String,Value)]
                    -> IO (Either String [Row])
 execParamStatement db query params =
@@ -202,10 +201,18 @@ execParamStatement db query params =
        get_rows stmt cols decoded_names []
 
   get_rows stmt cols col_names rows =
-    do res <- sqlite3_step stmt
+    do print "get_rows"
+       res <- sqlite3_step stmt
        case () of
          _ | res == sQLITE_ROW ->
-           do txts <- mapM (peekCString <=< sqlite3_column_text stmt) cols
+           do print "one"
+              -- Note: for now, we convert null values into empty strings
+              let get_val n = do ptr <- sqlite3_column_text stmt n
+                                 if ptr == nullPtr
+                                    then return ""
+                                    else peekCString ptr
+              txts <- mapM get_val cols
+              print "two"
               let row = zip col_names (map UTF8.decodeString txts)
               get_rows stmt cols col_names (row:rows)
            | res == sQLITE_DONE -> do sqlite3_finalize stmt
