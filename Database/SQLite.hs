@@ -201,18 +201,15 @@ execParamStatement db query params =
        get_rows stmt cols decoded_names []
 
   get_rows stmt cols col_names rows =
-    do print "get_rows"
-       res <- sqlite3_step stmt
+    do res <- sqlite3_step stmt
        case () of
          _ | res == sQLITE_ROW ->
-           do print "one"
-              -- Note: for now, we convert null values into empty strings
+           do -- Note: for now, we convert null values into empty strings
               let get_val n = do ptr <- sqlite3_column_text stmt n
                                  if ptr == nullPtr
                                     then return ""
                                     else peekCString ptr
               txts <- mapM get_val cols
-              print "two"
               let row = zip col_names (map UTF8.decodeString txts)
               get_rows stmt cols col_names (row:rows)
            | res == sQLITE_DONE -> do sqlite3_finalize stmt
