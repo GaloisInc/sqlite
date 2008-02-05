@@ -330,16 +330,16 @@ foreign import ccall "sqlite3.h sqlite3_memory_highwater"
 -}
 
 foreign import ccall "sqlite3.h sqlite3_set_authorizer"
-  sqlite3_set_authorizer :: SQLite -> Ptr (Ptr () -> CInt -> CString -> CString -> CString -> CString -> IO Status) -> Ptr () -> IO Status
+  sqlite3_set_authorizer :: SQLite -> FunPtr (Ptr () -> CInt -> CString -> CString -> CString -> CString -> IO Status) -> Ptr () -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_trace"
-  sqlite3_trace :: SQLite -> Ptr (Ptr () -> CString -> IO ()) -> Ptr () -> IO (Ptr ())
+  sqlite3_trace :: SQLite -> FunPtr (Ptr () -> CString -> IO ()) -> Ptr () -> IO (Ptr ())
 
 foreign import ccall "sqlite3.h sqlite3_profile"
-  sqlite3_profile :: SQLite -> Ptr (Ptr () -> CString -> SQLiteInt64 -> IO ()) -> Ptr () -> IO (Ptr ())
+  sqlite3_profile :: SQLite -> FunPtr (Ptr () -> CString -> SQLiteInt64 -> IO ()) -> Ptr () -> IO (Ptr ())
 
 foreign import ccall "sqlite3.h sqlite3_progress_handler"
-  sqlite3_progress_handler :: SQLite -> CInt -> Ptr (Ptr () -> IO CInt) -> Ptr () -> IO ()
+  sqlite3_progress_handler :: SQLite -> CInt -> FunPtr (Ptr () -> IO CInt) -> Ptr () -> IO ()
 
 foreign import ccall "sqlite3.h sqlite3_open"
   sqlite3_open :: CString -> Ptr SQLite -> IO Status
@@ -362,7 +362,7 @@ foreign import ccall "sqlite3.h sqlite3_prepare_v2"
   sqlite3_prepare :: SQLite -> CString -> CInt -> Ptr SQLiteStmt -> Ptr CChar -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_bind_blob"
-  sqlite3_bind_blob :: SQLiteStmt -> CInt -> Ptr () -> CInt -> Ptr (Ptr () -> IO ()) -> IO Status
+  sqlite3_bind_blob :: SQLiteStmt -> CInt -> Ptr () -> CInt -> FunPtr (Ptr () -> IO ()) -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_bind_double"
   sqlite3_bind_double :: SQLiteStmt -> CInt -> Double -> IO Status
@@ -377,7 +377,7 @@ foreign import ccall "sqlite3.h sqlite3_bind_null"
   sqlite3_bind_null :: SQLiteStmt -> CInt -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_bind_text"
-  sqlite3_bind_text :: SQLiteStmt -> CInt -> CString -> CInt -> Ptr (Ptr () -> IO ()) -> IO Status
+  sqlite3_bind_text :: SQLiteStmt -> CInt -> CString -> CInt -> FunPtr (Ptr () -> IO ()) -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_bind_value"
   sqlite3_bind_value :: SQLiteStmt -> CInt -> SQLiteValue -> IO Status
