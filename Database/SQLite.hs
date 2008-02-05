@@ -142,7 +142,7 @@ execStatement h sqlStmt = do
     case st of
       0 -> do
         ls <- readIORef m_rows
-        return (Left ls)
+        return (Left (reverse ls))
       _x -> do
         pstr <- peek p_errMsg
         err <- peekCString pstr
