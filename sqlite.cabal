@@ -12,7 +12,7 @@ Copyright:
   Copyright (c) 2007-8, Galois Inc
   Copyright (c) 2007, sof
 Category:        Database
-Build-depends:   base, pretty
+Build-depends:   base, pretty, utf8-string
 Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving
 Ghc-options:     -O2 -Wall
 Cc-options:      -Wall
