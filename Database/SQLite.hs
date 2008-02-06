@@ -85,7 +85,7 @@ closeConnection :: SQLite -> IO ()
 closeConnection h = sqlite3_close h >> return ()
 
 ------------------------------------------------------------------------
--- Adding data 
+-- Adding data
 
 type Row = [(ColumnName,String)]
 
@@ -117,7 +117,7 @@ insertRow h tab cs = do
    toVal f p = f p -- ($ f)
 
    quote "" = "''"
-   quote nm@(x:_) 
+   quote nm@(x:_)
     | isDigit x = nm
     | otherwise = '\'':toSQLString nm ++ "'"
 
@@ -263,7 +263,7 @@ execStatement h sqlStmt = do
  where
   execHandler ref _unused cols pCols pColNames = do
      let getStr ptr i = do
-           cstr <- peekElemOff ptr i 
+           cstr <- peekElemOff ptr i
 	   if cstr == nullPtr
 	    then return ""
 	    else peekCString cstr
