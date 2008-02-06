@@ -51,7 +51,7 @@ import Foreign.C
 import Foreign.C.String (newCStringLen, peekCString)
 import Foreign.Storable
 import Foreign.Ptr
-import Data.IORef
+-- import Data.IORef
 import Data.List
 import Data.Char ( isDigit )
 import Control.Monad (when)
@@ -89,7 +89,7 @@ type Row = [(ColumnName,String)]
 --
 defineTable :: SQLite -> SQLTable -> IO ()
 defineTable h tab = do
-   failOnRight "defineTable" $ execStatement h (createTable tab)
+   failOnLeft "defineTable" $ execStatement h (createTable tab)
    return ()
  where
   createTable t =
@@ -106,7 +106,7 @@ insertRow h tab cs = do
    let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
                tupled (toVals (quote.snd)) ++ ";")
-   failOnRight "insertRow" $ execStatement h stmt
+   failOnLeft "insertRow" $ execStatement h stmt
    return ()
   where
    toVals f = map (toVal f) cs
@@ -129,12 +129,12 @@ getLastRowID h = do
 ------------------------------------------------------------------------
 -- Executing queries
 
-failOnRight :: String -> IO (Either a String) -> IO a
-failOnRight loc act = do
+failOnLeft :: String -> IO (Either String a) -> IO a
+failOnLeft loc act = do
    r <- act
    case r of
-     Left v   -> return v
-     Right e  -> fail (loc ++ ": failed - " ++ e)
+     Right v -> return v
+     Left e  -> fail (loc ++ ": failed - " ++ e)
 
 
 data Value
@@ -172,6 +172,10 @@ to_error :: SQLite -> IO (Either String a)
 to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
 
 
+-- | Prepare and execute a parameterized statment.
+-- Statement parameter names start with a colon (for example, @:col_id@).
+-- Note that for the moment, column names should not contain \0
+-- characters because that part of the column name will be ignored.
 execParamStatement :: SQLite -> String -> [(String,Value)]
                    -> IO (Either String [Row])
 execParamStatement db query params =
@@ -195,6 +199,7 @@ execParamStatement db query params =
   recv_rows stmt =
     do col_num <- sqlite3_column_count stmt
        let cols = [0..col_num-1]
+       -- Note: column names should not contain \0 characters
        names <- mapM peekCString =<<
                         mapM (sqlite3_column_name stmt) cols
        let decoded_names = map UTF8.decodeString names
@@ -204,11 +209,9 @@ execParamStatement db query params =
     do res <- sqlite3_step stmt
        case () of
          _ | res == sQLITE_ROW ->
-           do -- Note: for now, we convert null values into empty strings
-              let get_val n = do ptr <- sqlite3_column_text stmt n
-                                 if ptr == nullPtr
-                                    then return ""
-                                    else peekCString ptr
+           do let get_val n = do ptr <- sqlite3_column_text stmt n
+                                 bytes <- sqlite3_column_bytes stmt n
+                                 peekCStringLen (ptr,fromIntegral bytes)
               txts <- mapM get_val cols
               let row = zip col_names (map UTF8.decodeString txts)
               get_rows stmt cols col_names (row:rows)
@@ -216,10 +219,14 @@ execParamStatement db query params =
                                       return (Right (reverse rows))
            | otherwise -> sqlite3_finalize stmt >> to_error db
 
-
-
 -- | Evaluate the SQL statement specified by 'sqlStmt'
-execStatement :: SQLite -> String -> IO (Either [Row] String)
+execStatement :: SQLite -> String -> IO (Either String [Row])
+execStatement db s = execParamStatement db s []
+
+{-
+-- | Evaluate the SQL statement specified by 'sqlStmt'
+-- NOTE: At the moment this does not do UTF8 encoding.
+execStatement :: SQLite -> String -> IO (Either String [Row])
 execStatement h sqlStmt = do
  alloca $ \ p_errMsg ->
   withCString sqlStmt $ \ c_sqlStmt -> do
@@ -229,11 +236,11 @@ execStatement h sqlStmt = do
     case st of
       0 -> do
         ls <- readIORef m_rows
-        return (Left (reverse ls))
+        return (Right (reverse ls))
       _x -> do
         pstr <- peek p_errMsg
         err <- peekCString pstr
-        return (Right err)
+        return (Left err)
  where
   execHandler ref _unused cols pCols pColNames = do
      let getStr ptr i = do
@@ -245,6 +252,7 @@ execStatement h sqlStmt = do
      cs <- mapM (getStr pColNames) [0..(fromIntegral cols - 1)]
      modifyIORef ref (\ ols -> (zip cs vs):ols)
      return 0
+-}
 
 tupled :: [String] -> String
 tupled xs = "(" ++ concat (intersperse ", " xs) ++ ")"
