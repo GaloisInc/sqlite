@@ -30,8 +30,12 @@ module Database.SQLite
        , closeConnection  -- :: SQLite -> IO ()
 
        -- * Executing SQL queries on the database
-       , execStatement    -- :: SQLite -> String -> IO ()
-       , execParamStatement
+       , execStatement        -- :: SQLite -> String -> IO (Either String Row)
+       , execStatement_       -- :: SQLite -> String -> IO (Maybe String)
+       , execParamStatement   -- :: SQLite -> String -> [(String,Value)]
+                              --                     -> IO (Either String Row)
+       , execParamStatement_  -- :: SQLite -> String -> [(String,Value)]
+                              --                     -> IO (Maybe String)
 
        -- * Basic insertion operations
        , insertRow
