@@ -172,6 +172,17 @@ to_error :: SQLite -> IO (Either String a)
 to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
 
 
+
+-- | Prepare and execute a parameterized statment, ignoring the result.
+-- See also 'execParamStatement'.
+execParamStatement_ :: SQLite -> String -> [(String,Value)] -> IO (Maybe String)
+execParamStatement_ db q ps =
+  do res <- execParamStatement db q ps
+     case res of
+       Right {} -> return Nothing
+       Left err -> return (Just err)
+
+
 -- | Prepare and execute a parameterized statment.
 -- Statement parameter names start with a colon (for example, @:col_id@).
 -- Note that for the moment, column names should not contain \0
@@ -222,6 +233,10 @@ execParamStatement db query params =
 -- | Evaluate the SQL statement specified by 'sqlStmt'
 execStatement :: SQLite -> String -> IO (Either String [Row])
 execStatement db s = execParamStatement db s []
+
+-- | Rerturns an error, or 'Nothing' if everything was OK.
+execStatement_ :: SQLite -> String -> IO (Maybe String)
+execStatement_ db s = execParamStatement_ db s []
 
 {-
 -- | Evaluate the SQL statement specified by 'sqlStmt'
