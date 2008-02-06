@@ -8,7 +8,7 @@ newTable tName =
         , tabColumns = 
 	    [ Column { colName    = "id"
 	             , colType    = SQLInt NORMAL False False
-		     , colClauses = [PrimaryKey,AutoIncrement]
+		     , colClauses = [PrimaryKey True]
 		     }
 	    , Column { colName    = "name"
 	             , colType    = SQLVarChar 200
