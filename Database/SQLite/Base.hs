@@ -359,7 +359,7 @@ foreign import ccall "sqlite3.h sqlite3_errmsg"
   sqlite3_errmsg :: SQLite -> IO CString
 
 foreign import ccall "sqlite3.h sqlite3_prepare_v2"
-  sqlite3_prepare :: SQLite -> CString -> CInt -> Ptr SQLiteStmt -> Ptr CChar -> IO Status
+  sqlite3_prepare :: SQLite -> CString -> CInt -> Ptr SQLiteStmt -> Ptr CString -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_bind_blob"
   sqlite3_bind_blob :: SQLiteStmt -> CInt -> Ptr () -> CInt -> FunPtr (Ptr () -> IO ()) -> IO Status
@@ -454,7 +454,7 @@ foreign import ccall "sqlite3.h sqlite3_column_value"
   sqlite3_column_value :: SQLiteStmt -> CInt -> IO SQLiteValue
 
 foreign import ccall "sqlite3.h sqlite3_finalize"
-  sqlite3_finalize :: SQLiteStmt -> IO CInt
+  sqlite3_finalize :: SQLiteStmt -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_create_function"
   sqlite3_create_function :: SQLite
