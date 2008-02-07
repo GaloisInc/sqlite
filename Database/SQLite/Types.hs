@@ -394,6 +394,23 @@ sQLITE_ANY           = 5
 sQLITE_UTF16_ALIGNED :: TextEncodeFlag
 sQLITE_UTF16_ALIGNED = 8
 
+type FundamentalDatatype = CInt
+
+-- | Fundamental datatypes
+--
+-- * <http://www.sqlite.org/c3ref/c_blob.html>
+--
+sQLITE_INTEGER       :: FundamentalDatatype
+sQLITE_INTEGER       = 1
+sQLITE_FLOAT         :: FundamentalDatatype
+sQLITE_FLOAT         = 2
+sQLITE_BLOB          :: FundamentalDatatype
+sQLITE_BLOB          = 4
+sQLITE_NULL          :: FundamentalDatatype
+sQLITE_NULL          = 5
+sQLITE_TEXT          :: FundamentalDatatype
+sQLITE_TEXT          = 3
+
 isNullStmt :: SQLiteStmt -> Bool
 isNullStmt (SQLiteStmt p) = p == nullPtr
 
