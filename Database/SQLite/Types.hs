@@ -393,3 +393,9 @@ sQLITE_ANY           :: TextEncodeFlag
 sQLITE_ANY           = 5
 sQLITE_UTF16_ALIGNED :: TextEncodeFlag
 sQLITE_UTF16_ALIGNED = 8
+
+isNullStmt :: SQLiteStmt -> Bool
+isNullStmt (SQLiteStmt p) = p == nullPtr
+
+noCallback :: SQLiteCallback a
+noCallback = SQLiteCallback nullFunPtr
