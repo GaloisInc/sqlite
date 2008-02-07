@@ -55,7 +55,9 @@ import Foreign.Storable
 import Foreign.Ptr
 -- import Data.IORef
 import Data.List
+import Data.Int
 import Data.Char ( isDigit )
+import Data.ByteString.Char8 (ByteString, packCStringLen, useAsCStringLen)
 import Control.Monad ((<=<),when,unless)
 import qualified Codec.Binary.UTF8.String as UTF8
 
@@ -85,14 +87,13 @@ closeConnection h = sqlite3_close h >> return ()
 ------------------------------------------------------------------------
 -- Adding data
 
-type Row = [(ColumnName,String)]
+type Row a = [(ColumnName,a)]
 
 -- | Define a new table, populated from 'tab' in the database.
 --
 defineTable :: SQLite -> SQLTable -> IO ()
 defineTable h tab = do
-   failOnLeft "defineTable" $ execStatements h (createTable tab)
-   return ()
+   failOnJust "defineTable" $ execStatements_ h (createTable tab)
  where
   createTable t =
     "CREATE TABLE " ++ toSQLString (tabName t) ++
@@ -103,13 +104,12 @@ defineTable h tab = do
     ' ':unwords (map showClause (colClauses col))
 
 -- | Insert a row into the table 'tab'.
-insertRow :: SQLite -> TableName -> Row -> IO ()
+insertRow :: SQLite -> TableName -> Row String -> IO ()
 insertRow h tab cs = do
    let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
                tupled (toVals (quote.snd)) ++ ";")
-   failOnLeft "insertRow" $ execStatements h stmt
-   return ()
+   failOnJust "insertRow" $ execStatements_ h stmt
   where
    toVals f = map (toVal f) cs
    toVal f p = f p -- ($ f)
@@ -131,20 +131,20 @@ getLastRowID h = do
 ------------------------------------------------------------------------
 -- Executing queries
 
-failOnLeft :: String -> IO (Either String a) -> IO a
-failOnLeft loc act = do
+failOnJust :: String -> IO (Maybe String) -> IO ()
+failOnJust loc act = do
    r <- act
    case r of
-     Right v -> return v
-     Left e  -> fail (loc ++ ": failed - " ++ e)
-
+     Nothing -> return ()
+     Just e  -> fail (loc ++ ": failed - " ++ e)
 
 data Value
   = Double Double
-  | Int CInt
-  | Int64 SQLiteInt64
-  | Text String
+  | Int    Int64
+  | Text   String
+  | Blob   ByteString
   | Null
+  deriving Show
 
 foreign import ccall "stdlib.h &free"
   p_free :: FunPtr (Ptr a -> IO ())
@@ -155,8 +155,8 @@ foreign import ccall "stdlib.h &free"
 bindValue :: SQLiteStmt -> String -> Value -> IO Status
 bindValue stmt key value =
   withCString (UTF8.encodeString key)      $ \ckey ->
-  sqlite3_bind_parameter_index stmt ckey >>= \ix ->
-  ensure (ix > 0)  (return sQLITE_OK)      $
+  ensure (sqlite3_bind_parameter_index stmt ckey)
+         (> 0)  (return sQLITE_OK)         $ \ix ->
   case value of
     Text txt ->
       do (cptr,len) <- newCStringLen (UTF8.encodeString txt)
@@ -164,9 +164,11 @@ bindValue stmt key value =
          when (res /= sQLITE_OK) (free cptr)
          return res
     Null     -> sqlite3_bind_null stmt ix
-    Int x    -> sqlite3_bind_int stmt ix x
-    Int64 x  -> sqlite3_bind_int64 stmt ix x
+    Int x    -> sqlite3_bind_int64 stmt ix x
     Double x -> sqlite3_bind_double stmt ix x
+    Blob   x -> useAsCStringLen x $ \ (ptr,bytes) ->
+                sqlite3_bind_blob stmt ix (castPtr ptr)
+                                  (fromIntegral bytes) nullFunPtr
 
 
 -- | Called when we know that an error has occured.
@@ -179,18 +181,15 @@ to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
 -- See also 'execParamStatement'.
 execParamStatements_ :: SQLite -> String -> [(String,Value)] -> IO (Maybe String)
 execParamStatements_ db q ps =
-  do res <- execParamStatements db q ps
-     case res of
-       Right {} -> return Nothing
-       Left err -> return (Just err)
-
+  either Just (const Nothing) `fmap`
+    (execParamStatements db q ps :: IO (Either String [[Row ()]]))
 
 -- | Prepare and execute a parameterized statment.
 -- Statement parameter names start with a colon (for example, @:col_id@).
 -- Note that for the moment, column names should not contain \0
 -- characters because that part of the column name will be ignored.
-execParamStatements :: SQLite -> String -> [(String,Value)]
-                   -> IO (Either String [[Row]])
+execParamStatements :: SQLiteResult a => SQLite -> String -> [(String,Value)]
+                   -> IO (Either String [[Row a]])
 execParamStatements db query params =
   alloca $ \stmt_ptr ->
   alloca $ \pzTail ->
@@ -204,19 +203,16 @@ execParamStatements db query params =
     return res
 
   where
-  prepare_loop :: Ptr SQLiteStmt -> Ptr CString -> CString
-               -> IO (Either String [[Row]])
   prepare_loop stmt_ptr pzTail zSql =
     let continue = prepare_loop stmt_ptr pzTail =<< peek pzTail in
 
-    peek zSql                                    >>= \ sql ->
-    ensure (sql /= 0)            (eReturn [])      $
+    peek zSql `check` ((/= 0), eReturn [])          $
 
-    sqlite3_prepare db zSql (-1) stmt_ptr pzTail >>= \ res ->
-    ensure (res == sQLITE_OK)    (to_error db)     $
+    sqlite3_prepare db zSql (-1) stmt_ptr pzTail
+              `check` ((== sQLITE_OK), to_error db) $
 
-    peek stmt_ptr                                >>= \ stmt ->
-    ensure (not $ isNullStmt stmt)   continue      $
+    ensure (peek stmt_ptr)
+           (not . isNullStmt)   continue           $ \ stmt ->
 
     bind_all stmt params                          >>
     recv_rows stmt                           `ebind` \ x ->
@@ -237,22 +233,17 @@ execParamStatements db query params =
   get_rows stmt cols col_names rows =
     sqlite3_step stmt >>= \ step_res ->
     if step_res == sQLITE_ROW then do
-      txts <- mapM (get_val stmt) cols
+      txts <- mapM (get_sqlite_val stmt) cols
       let row = zip col_names txts
       get_rows stmt cols col_names (row:rows)
     else
-      sqlite3_finalize stmt                      >>= \ final_res ->
-      ensure (final_res == sQLITE_OK) (to_error db) $
+      sqlite3_finalize stmt `check` ((== sQLITE_OK), to_error db) $
       eReturn (reverse rows)
 
-  get_val stmt n =
-   do ptr   <- sqlite3_column_text stmt n
-      bytes <- sqlite3_column_bytes stmt n
-      str   <- peekCStringLen (ptr,fromIntegral bytes)
-      return (UTF8.decodeString str)
 
 -- | Evaluate the SQL statement specified by 'sqlStmt'
-execStatements :: SQLite -> String -> IO (Either String [[Row]])
+execStatements :: SQLiteResult a
+               => SQLite -> String -> IO (Either String [[Row a]])
 execStatements db s = execParamStatements db s []
 
 -- | Returns an error, or 'Nothing' if everything was OK.
@@ -299,7 +290,7 @@ execStatement h sqlStmt = do
 tupled :: [String] -> String
 tupled xs = "(" ++ concat (intersperse ", " xs) ++ ")"
 
-infixl 1 `ebind`
+infixl 1 `ebind`, `check`
 ebind :: Monad m => m (Either e a) -> (a -> m (Either e b)) -> m (Either e b)
 m `ebind` f = do x <- m
                  case x of Left e -> return $ Left e
@@ -308,6 +299,47 @@ m `ebind` f = do x <- m
 eReturn :: Monad m => a -> m (Either e a)
 eReturn x = return $ Right x
 
-ensure :: Bool -> a -> a -> a
-ensure p t e = if p then e else t
+check :: Monad m => m a -> ((a -> Bool), m b) -> m b -> m b
+check m (p,t) f = m >>= \ x -> if p x then f else t
 
+ensure :: Monad m => m a -> (a -> Bool) -> m b -> (a -> m b) -> m b
+ensure m p t f = m >>= \ x -> if p x then f x else t
+
+class SQLiteResult a where
+  get_sqlite_val :: SQLiteStmt -> CInt -> IO a
+
+instance SQLiteResult String where
+  get_sqlite_val = get_text_val
+
+instance SQLiteResult () where
+  get_sqlite_val _ _ = return ()
+
+instance SQLiteResult Value where
+  get_sqlite_val = get_val
+
+get_text_val :: SQLiteStmt -> CInt -> IO String
+get_text_val stmt n =
+ do ptr   <- sqlite3_column_text stmt n
+    bytes <- sqlite3_column_bytes stmt n
+    str   <- peekCStringLen (ptr,fromIntegral bytes)
+    return (UTF8.decodeString str)
+
+get_val :: SQLiteStmt -> CInt -> IO Value
+get_val stmt n =
+ do val <- sqlite3_column_value stmt n
+    typ <- sqlite3_value_type val
+    case () of
+     _ | typ == sQLITE_NULL    -> return Null
+       | typ == sQLITE_INTEGER -> Int `fmap` sqlite3_value_int64 val
+       | typ == sQLITE_FLOAT   -> Double `fmap` sqlite3_value_double val
+       | typ == sQLITE_TEXT    ->
+                      do ptr <- sqlite3_value_text val
+                         bytes <- sqlite3_value_bytes val
+                         str <- peekCStringLen (ptr,fromIntegral bytes)
+                         return $ Text str
+       | typ == sQLITE_BLOB    ->
+                      do p@(SQLiteBLOB ptr) <- sqlite3_value_blob val
+                         bytes <- sqlite3_blob_bytes p
+                         str <- packCStringLen (castPtr ptr, fromIntegral bytes)
+                         return $ Blob str
+       | otherwise -> error "get_val: unknown type"
