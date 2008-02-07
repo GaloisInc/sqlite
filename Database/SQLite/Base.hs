@@ -93,6 +93,7 @@ module Database.SQLite.Base
        , sqlite3_value_text16le
        , sqlite3_value_text16be
        , sqlite3_value_numeric_type
+       , sqlite3_value_type
        , sqlite3_aggregate_context
        , sqlite3_user_data
 
@@ -499,6 +500,9 @@ foreign import ccall "sqlite3.h sqlite3_value_text16be"
 
 foreign import ccall "sqlite3.h sqlite3_value_numeric_type"
   sqlite3_value_numeric_type :: SQLiteValue -> IO CInt
+
+foreign import ccall "sqlite3.h sqlite3_value_type"
+  sqlite3_value_type :: SQLiteValue -> IO FundamentalDatatype
 
 foreign import ccall "sqlite3.h sqlite3_aggregate_context"
   sqlite3_aggregate_context :: SQLiteContext -> CInt -> IO SQLiteContextBuffer
