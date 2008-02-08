@@ -53,12 +53,11 @@ import Foreign.C
 import Foreign.C.String (newCStringLen, peekCString)
 import Foreign.Storable
 import Foreign.Ptr
--- import Data.IORef
 import Data.List
 import Data.Int
 import Data.Char ( isDigit )
 import Data.ByteString.Char8 (ByteString, packCStringLen, useAsCStringLen)
-import Control.Monad ((<=<),when,unless)
+import Control.Monad ((<=<),when)
 import qualified Codec.Binary.UTF8.String as UTF8
 
 ------------------------------------------------------------------------
@@ -195,51 +194,50 @@ execParamStatements db query params =
   alloca $ \pzTail ->
   let encoded = UTF8.encodeString query in
   withCString encoded $ \zSql -> do
-    res <- prepare_loop stmt_ptr pzTail zSql
-
-    stmt <- peek stmt_ptr
-    unless (isNullStmt stmt) (sqlite3_finalize stmt >> return ())
-
-    return res
+    poke pzTail zSql
+    prepare_loop stmt_ptr pzTail
 
   where
-  prepare_loop stmt_ptr pzTail zSql =
-    let continue = prepare_loop stmt_ptr pzTail =<< peek pzTail in
+  prepare_loop stmt_ptr sqltxt_ptr = loop [] where
+    loop xs =
+      peek sqltxt_ptr >>= \ sqltxt ->
+      ensure_ (peek sqltxt) (/= 0) (eReturn (reverse xs)) $
 
-    peek zSql `check` ((/= 0), eReturn [])          $
+      ensure_ (sqlite3_prepare db sqltxt (-1) stmt_ptr sqltxt_ptr)
+             (== sQLITE_OK) (to_error db)          $
 
-    sqlite3_prepare db zSql (-1) stmt_ptr pzTail
-              `check` ((== sQLITE_OK), to_error db) $
+      ensure (peek stmt_ptr)
+             (not . isNullStmt)   (loop xs)        $ \ stmt ->
 
-    ensure (peek stmt_ptr)
-           (not . isNullStmt)   continue           $ \ stmt ->
-
-    bind_all stmt params                          >>
-    recv_rows stmt                           `ebind` \ x ->
-    continue                                 `ebind` \ xs ->
-    eReturn (x:xs)
-
-
-  bind_all stmt ps = mapM_ (uncurry $ bindValue stmt) ps
+      recv_rows stmt `then_finalize` stmt    `ebind` \ x ->
+      loop (x:xs)
 
   recv_rows stmt =
-    do col_num <- sqlite3_column_count stmt
+    do mapM_ (uncurry $ bindValue stmt) params
+       col_num <- sqlite3_column_count stmt
        let cols = [0..col_num-1]
        -- Note: column names should not contain \0 characters
        names <- mapM (peekCString <=< sqlite3_column_name stmt) cols
        let decoded_names = map UTF8.decodeString names
        get_rows stmt cols decoded_names []
 
-  get_rows stmt cols col_names rows =
-    sqlite3_step stmt >>= \ step_res ->
-    if step_res == sQLITE_ROW then do
-      txts <- mapM (get_sqlite_val stmt) cols
-      let row = zip col_names txts
-      get_rows stmt cols col_names (row:rows)
-    else
-      sqlite3_finalize stmt `check` ((== sQLITE_OK), to_error db) $
-      eReturn (reverse rows)
+  get_rows stmt cols col_names rows = do
+    res <- sqlite3_step stmt
+    if res == sQLITE_ROW
+      then do
+        txts <- mapM (get_sqlite_val stmt) cols
+        let row = zip col_names txts
+        get_rows stmt cols col_names (row:rows)
+      else if res == sQLITE_DONE
+        then eReturn (reverse rows)
+      else to_error db
 
+  then_finalize m stmt = do
+    e <- m
+    sqlite3_finalize stmt
+    case e of
+      Left _ -> to_error db
+      Right r -> return (Right r)
 
 -- | Evaluate the SQL statement specified by 'sqlStmt'
 execStatements :: SQLiteResult a
@@ -249,48 +247,16 @@ execStatements db s = execParamStatements db s []
 -- | Returns an error, or 'Nothing' if everything was OK.
 execStatements_ :: SQLite -> String -> IO (Maybe String)
 execStatements_ db sqlStmt =
-  let sqlStmt1 = UTF8.encodeString sqlStmt in
-  withCString sqlStmt1                                 $ \ c_sqlStmt ->
+  withCString (UTF8.encodeString sqlStmt)              $ \ c_sqlStmt ->
   sqlite3_exec db c_sqlStmt noCallback nullPtr nullPtr >>= \ st ->
   if st == sQLITE_OK
     then return Nothing
     else fmap Just . peekCString =<< sqlite3_errmsg db
 
-{-
--- | Evaluate the SQL statement specified by 'sqlStmt'
--- NOTE: At the moment this does not do UTF8 encoding.
-execStatement :: SQLite -> String -> IO (Either String [Row])
-execStatement h sqlStmt = do
- alloca $ \ p_errMsg ->
-  withCString sqlStmt $ \ c_sqlStmt -> do
-    m_rows <- newIORef []
-    hdlr <- mkExecHandler (execHandler m_rows)
-    st   <- sqlite3_exec h c_sqlStmt hdlr nullPtr p_errMsg
-    case st of
-      0 -> do
-        ls <- readIORef m_rows
-        return (Right (reverse ls))
-      _x -> do
-        pstr <- peek p_errMsg
-        err <- peekCString pstr
-        return (Left err)
- where
-  execHandler ref _unused cols pCols pColNames = do
-     let getStr ptr i = do
-           cstr <- peekElemOff ptr i
-	   if cstr == nullPtr
-	    then return ""
-	    else peekCString cstr
-     vs <- mapM (getStr pCols) [0..(fromIntegral cols - 1)]
-     cs <- mapM (getStr pColNames) [0..(fromIntegral cols - 1)]
-     modifyIORef ref (\ ols -> (zip cs vs):ols)
-     return 0
--}
-
 tupled :: [String] -> String
 tupled xs = "(" ++ concat (intersperse ", " xs) ++ ")"
 
-infixl 1 `ebind`, `check`
+infixl 1 `ebind`
 ebind :: Monad m => m (Either e a) -> (a -> m (Either e b)) -> m (Either e b)
 m `ebind` f = do x <- m
                  case x of Left e -> return $ Left e
@@ -299,11 +265,11 @@ m `ebind` f = do x <- m
 eReturn :: Monad m => a -> m (Either e a)
 eReturn x = return $ Right x
 
-check :: Monad m => m a -> ((a -> Bool), m b) -> m b -> m b
-check m (p,t) f = m >>= \ x -> if p x then f else t
-
 ensure :: Monad m => m a -> (a -> Bool) -> m b -> (a -> m b) -> m b
 ensure m p t f = m >>= \ x -> if p x then f x else t
+
+ensure_ :: Monad m => m a -> (a -> Bool) -> m b -> m b -> m b
+ensure_ m p t f = ensure m p t (const f)
 
 class SQLiteResult a where
   get_sqlite_val :: SQLiteStmt -> CInt -> IO a
