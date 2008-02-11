@@ -30,10 +30,10 @@ module Database.SQLite
        , closeConnection
 
        -- * Executing SQL queries on the database
-       , execStatements
-       , execStatements_
-       , execParamStatements
-       , execParamStatements_
+       , execStatement
+       , execStatement_
+       , execParamStatement
+       , execParamStatement_
 
        -- * Basic insertion operations
        , insertRow
@@ -92,7 +92,7 @@ type Row a = [(ColumnName,a)]
 --
 defineTable :: SQLite -> SQLTable -> IO ()
 defineTable h tab = do
-   failOnJust "defineTable" $ execStatements_ h (createTable tab)
+   failOnJust "defineTable" $ execStatement_ h (createTable tab)
  where
   createTable t =
     "CREATE TABLE " ++ toSQLString (tabName t) ++
@@ -108,7 +108,7 @@ insertRow h tab cs = do
    let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
                tupled (toVals (quote.snd)) ++ ";")
-   failOnJust "insertRow" $ execStatements_ h stmt
+   failOnJust "insertRow" $ execStatement_ h stmt
   where
    toVals f = map (toVal f) cs
    toVal f p = f p -- ($ f)
@@ -178,18 +178,18 @@ to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
 
 -- | Prepare and execute a parameterized statment, ignoring the result.
 -- See also 'execParamStatement'.
-execParamStatements_ :: SQLite -> String -> [(String,Value)] -> IO (Maybe String)
-execParamStatements_ db q ps =
+execParamStatement_ :: SQLite -> String -> [(String,Value)] -> IO (Maybe String)
+execParamStatement_ db q ps =
   either Just (const Nothing) `fmap`
-    (execParamStatements db q ps :: IO (Either String [[Row ()]]))
+    (execParamStatement db q ps :: IO (Either String [[Row ()]]))
 
 -- | Prepare and execute a parameterized statment.
 -- Statement parameter names start with a colon (for example, @:col_id@).
 -- Note that for the moment, column names should not contain \0
 -- characters because that part of the column name will be ignored.
-execParamStatements :: SQLiteResult a => SQLite -> String -> [(String,Value)]
+execParamStatement :: SQLiteResult a => SQLite -> String -> [(String,Value)]
                    -> IO (Either String [[Row a]])
-execParamStatements db query params =
+execParamStatement db query params =
   alloca $ \stmt_ptr ->
   alloca $ \pzTail ->
   let encoded = UTF8.encodeString query in
@@ -240,13 +240,13 @@ execParamStatements db query params =
       Right r -> return (Right r)
 
 -- | Evaluate the SQL statement specified by 'sqlStmt'
-execStatements :: SQLiteResult a
+execStatement :: SQLiteResult a
                => SQLite -> String -> IO (Either String [[Row a]])
-execStatements db s = execParamStatements db s []
+execStatement db s = execParamStatement db s []
 
 -- | Returns an error, or 'Nothing' if everything was OK.
-execStatements_ :: SQLite -> String -> IO (Maybe String)
-execStatements_ db sqlStmt =
+execStatement_ :: SQLite -> String -> IO (Maybe String)
+execStatement_ db sqlStmt =
   withCString (UTF8.encodeString sqlStmt)              $ \ c_sqlStmt ->
   sqlite3_exec db c_sqlStmt noCallback nullPtr nullPtr >>= \ st ->
   if st == sQLITE_OK
