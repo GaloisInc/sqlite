@@ -90,9 +90,8 @@ type Row a = [(ColumnName,a)]
 
 -- | Define a new table, populated from 'tab' in the database.
 --
-defineTable :: SQLite -> SQLTable -> IO ()
-defineTable h tab = do
-   failOnJust "defineTable" $ execStatement_ h (createTable tab)
+defineTable :: SQLite -> SQLTable -> IO (Maybe String)
+defineTable h tab = execStatement_ h (createTable tab)
  where
   createTable t =
     "CREATE TABLE " ++ toSQLString (tabName t) ++
@@ -103,12 +102,12 @@ defineTable h tab = do
     ' ':unwords (map showClause (colClauses col))
 
 -- | Insert a row into the table 'tab'.
-insertRow :: SQLite -> TableName -> Row String -> IO ()
+insertRow :: SQLite -> TableName -> Row String -> IO (Maybe String)
 insertRow h tab cs = do
    let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
                tupled (toVals (quote.snd)) ++ ";")
-   failOnJust "insertRow" $ execStatement_ h stmt
+   execStatement_ h stmt
   where
    toVals f = map (toVal f) cs
    toVal f p = f p -- ($ f)
@@ -129,13 +128,6 @@ getLastRowID h = do
 
 ------------------------------------------------------------------------
 -- Executing queries
-
-failOnJust :: String -> IO (Maybe String) -> IO ()
-failOnJust loc act = do
-   r <- act
-   case r of
-     Nothing -> return ()
-     Just e  -> fail (loc ++ ": failed - " ++ e)
 
 data Value
   = Double Double
