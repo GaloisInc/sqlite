@@ -17,12 +17,12 @@ Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
                  TypeSynonymInstances
 Ghc-options:     -O2 -Wall
 Cc-options:      -Wall
-Include-dirs:	 include
+Include-dirs:    include
 Includes:        sqlite3-local.h
 C-Sources:       cbits/sqlite3-local.c
 Extra-Libraries: sqlite3
 -- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
-extra-source-files:      
+extra-source-files:
     README configure
     include/sqlite3-local.h
     sqlite.buildinfo.unix sqlite.buildinfo.win32 
