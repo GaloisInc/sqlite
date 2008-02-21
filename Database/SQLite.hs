@@ -89,8 +89,8 @@ closeConnection h = sqlite3_close h >> return ()
 
 type Row a = [(ColumnName,a)]
 
-defineTableOpt :: SQLite -> SQLTable -> Bool -> IO (Maybe String)
-defineTableOpt h tab check = execStatement_ h (createTable tab)
+defineTableOpt :: SQLite -> Bool -> SQLTable -> IO (Maybe String)
+defineTableOpt h check tab = execStatement_ h (createTable tab)
  where
   opt = if check then " IF NOT EXISTS " else ""
   createTable t =
@@ -105,7 +105,7 @@ defineTableOpt h tab check = execStatement_ h (createTable tab)
 -- | Define a new table, populated from 'tab' in the database.
 --
 defineTable :: SQLite -> SQLTable -> IO (Maybe String)
-defineTable h tab = defineTableOpt h tab False
+defineTable h tab = defineTableOpt h False tab
 
 -- | Insert a row into the table 'tab'.
 insertRow :: SQLite -> TableName -> Row String -> IO (Maybe String)
