@@ -38,6 +38,7 @@ module Database.SQLite
        -- * Basic insertion operations
        , insertRow
        , defineTable
+       , defineTableOpt
        , getLastRowID
        , Row
        , Value(..)
@@ -88,18 +89,23 @@ closeConnection h = sqlite3_close h >> return ()
 
 type Row a = [(ColumnName,a)]
 
--- | Define a new table, populated from 'tab' in the database.
---
-defineTable :: SQLite -> SQLTable -> IO (Maybe String)
-defineTable h tab = execStatement_ h (createTable tab)
+defineTableOpt :: SQLite -> SQLTable -> Bool -> IO (Maybe String)
+defineTableOpt h tab check = execStatement_ h (createTable tab)
  where
+  opt = if check then " IF NOT EXISTS " else ""
   createTable t =
-    "CREATE TABLE " ++ toSQLString (tabName t) ++
+    "CREATE TABLE " ++ toSQLString (tabName t) ++ opt ++
     tupled (map toCols (tabColumns t)) ++ ";"
 
   toCols col =
     toSQLString (colName col) ++ " " ++ showType (colType col) ++
     ' ':unwords (map showClause (colClauses col))
+
+
+-- | Define a new table, populated from 'tab' in the database.
+--
+defineTable :: SQLite -> SQLTable -> IO (Maybe String)
+defineTable h tab = defineTableOpt h tab False
 
 -- | Insert a row into the table 'tab'.
 insertRow :: SQLite -> TableName -> Row String -> IO (Maybe String)
