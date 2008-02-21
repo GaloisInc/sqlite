@@ -57,7 +57,7 @@ import Foreign.Ptr
 import Data.List
 import Data.Int
 import Data.Char ( isDigit )
-import Data.ByteString.Char8 (ByteString, packCStringLen, useAsCStringLen)
+import Data.ByteString (ByteString, packCStringLen, useAsCStringLen)
 import Control.Monad ((<=<),when)
 import qualified Codec.Binary.UTF8.String as UTF8
 
@@ -302,8 +302,8 @@ get_val stmt n =
                          str <- peekCStringLen (ptr,fromIntegral bytes)
                          return $ Text str
        | typ == sQLITE_BLOB    ->
-                      do p@(SQLiteBLOB ptr) <- sqlite3_value_blob val
-                         bytes <- sqlite3_blob_bytes p
+                      do SQLiteBLOB ptr <- sqlite3_value_blob val
+                         bytes <- sqlite3_value_bytes val
                          str <- packCStringLen (castPtr ptr, fromIntegral bytes)
                          return $ Blob str
        | otherwise -> error "get_val: unknown type"
