@@ -94,7 +94,7 @@ defineTableOpt h check tab = execStatement_ h (createTable tab)
  where
   opt = if check then " IF NOT EXISTS " else ""
   createTable t =
-    "CREATE TABLE " ++ toSQLString (tabName t) ++ opt ++
+    "CREATE TABLE " ++ opt ++ toSQLString (tabName t) ++
     tupled (map toCols (tabColumns t)) ++ ";"
 
   toCols col =
