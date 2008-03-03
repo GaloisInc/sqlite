@@ -43,6 +43,10 @@ module Database.SQLite
        , Row
        , Value(..)
 
+       , addRegexpSupport
+       , RegexpHandler
+       , withPrim
+       , SQLiteHandle()
        ) where
 
 import Database.SQLite.Types
@@ -53,43 +57,60 @@ import Foreign.Marshal
 import Foreign.C
 import Foreign.C.String (newCStringLen, peekCString)
 import Foreign.Storable
+import qualified Foreign.Concurrent as Conc
 import Foreign.Ptr
+import Foreign.ForeignPtr
 import Data.List
 import Data.Int
 import Data.Char ( isDigit )
 import Data.ByteString (ByteString, packCStringLen, useAsCStringLen)
+import Data.ByteString.Unsafe (unsafePackCStringLen)
 import Control.Monad ((<=<),when)
 import qualified Codec.Binary.UTF8.String as UTF8
 
 ------------------------------------------------------------------------
+
+newtype SQLiteHandle = SQLiteHandle (ForeignPtr ())
+
+addSQLiteHandleFinalizer :: SQLiteHandle -> IO () -> IO ()
+addSQLiteHandleFinalizer (SQLiteHandle h) = Conc.addForeignPtrFinalizer h
+
+newSQLiteHandle :: SQLite -> IO () -> IO SQLiteHandle
+newSQLiteHandle (SQLite p) m = SQLiteHandle `fmap` Conc.newForeignPtr p m
 
 -- | Open a new database connection, whose name is given
 -- by the 'dbName' argument. A sqlite3 handle is returned.
 --
 -- An exception is thrown if the database could not be opened.
 --
-openConnection :: String -> IO SQLite
+openConnection :: String -> IO SQLiteHandle
 openConnection dbName = do
   ptr <- malloc
   st  <- withCString dbName $ \ c_dbName ->
                 sqlite3_open c_dbName ptr
   case st of
-    0 -> peek ptr
+    0 -> do db <- peek ptr
+            newSQLiteHandle db (closeHandle db)
     _ -> fail ("openDatabase: failed to open " ++ show st)
+
+  where closeHandle db = sqlite3_close db >> return ()
 
 -- | Close a database connection.
 -- Destroys the SQLite value associated with a database, closes
 -- all open files relating to the database, and releases all resources.
 --
-closeConnection :: SQLite -> IO ()
-closeConnection h = sqlite3_close h >> return ()
+closeConnection :: SQLiteHandle -> IO ()
+closeConnection (SQLiteHandle h) = finalizeForeignPtr h
+
+withPrim :: SQLiteHandle -> (SQLite -> IO a) -> IO a
+withPrim (SQLiteHandle h) f = withForeignPtr h (f . SQLite)
 
 ------------------------------------------------------------------------
 -- Adding data
 
 type Row a = [(ColumnName,a)]
 
-defineTableOpt :: SQLite -> Bool -> SQLTable -> IO (Maybe String)
+defineTableOpt :: SQLiteHandle -> Bool -> SQLTable -> IO (Maybe String)
 defineTableOpt h check tab = execStatement_ h (createTable tab)
  where
   opt = if check then " IF NOT EXISTS " else ""
@@ -104,11 +125,11 @@ defineTableOpt h check tab = execStatement_ h (createTable tab)
 
 -- | Define a new table, populated from 'tab' in the database.
 --
-defineTable :: SQLite -> SQLTable -> IO (Maybe String)
+defineTable :: SQLiteHandle -> SQLTable -> IO (Maybe String)
 defineTable h tab = defineTableOpt h False tab
 
 -- | Insert a row into the table 'tab'.
-insertRow :: SQLite -> TableName -> Row String -> IO (Maybe String)
+insertRow :: SQLiteHandle -> TableName -> Row String -> IO (Maybe String)
 insertRow h tab cs = do
    let stmt = ("INSERT INTO " ++ tab ++
                tupled (toVals fst) ++ " VALUES " ++
@@ -176,7 +197,8 @@ to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
 
 -- | Prepare and execute a parameterized statment, ignoring the result.
 -- See also 'execParamStatement'.
-execParamStatement_ :: SQLite -> String -> [(String,Value)] -> IO (Maybe String)
+execParamStatement_ :: SQLiteHandle -> String -> [(String,Value)]
+                    -> IO (Maybe String)
 execParamStatement_ db q ps =
   either Just (const Nothing) `fmap`
     (execParamStatement db q ps :: IO (Either String [[Row ()]]))
@@ -185,18 +207,18 @@ execParamStatement_ db q ps =
 -- Statement parameter names start with a colon (for example, @:col_id@).
 -- Note that for the moment, column names should not contain \0
 -- characters because that part of the column name will be ignored.
-execParamStatement :: SQLiteResult a => SQLite -> String -> [(String,Value)]
-                   -> IO (Either String [[Row a]])
-execParamStatement db query params =
+execParamStatement :: SQLiteResult a => SQLiteHandle -> String
+                   -> [(String,Value)] -> IO (Either String [[Row a]])
+execParamStatement h query params = withPrim h $ \ db ->
   alloca $ \stmt_ptr ->
   alloca $ \pzTail ->
   let encoded = UTF8.encodeString query in
   withCString encoded $ \zSql -> do
     poke pzTail zSql
-    prepare_loop stmt_ptr pzTail
+    prepare_loop db stmt_ptr pzTail
 
   where
-  prepare_loop stmt_ptr sqltxt_ptr = loop [] where
+  prepare_loop db stmt_ptr sqltxt_ptr = loop [] where
     loop xs =
       peek sqltxt_ptr >>= \ sqltxt ->
       ensure_ (peek sqltxt) (/= 0) (eReturn (reverse xs)) $
@@ -207,30 +229,30 @@ execParamStatement db query params =
       ensure (peek stmt_ptr)
              (not . isNullStmt)   (loop xs)        $ \ stmt ->
 
-      recv_rows stmt `then_finalize` stmt    `ebind` \ x ->
+      then_finalize db (recv_rows db stmt) stmt `ebind` \ x ->
       loop (x:xs)
 
-  recv_rows stmt =
+  recv_rows db stmt =
     do mapM_ (uncurry $ bindValue stmt) params
        col_num <- sqlite3_column_count stmt
        let cols = [0..col_num-1]
        -- Note: column names should not contain \0 characters
        names <- mapM (peekCString <=< sqlite3_column_name stmt) cols
        let decoded_names = map UTF8.decodeString names
-       get_rows stmt cols decoded_names []
+       get_rows db stmt cols decoded_names []
 
-  get_rows stmt cols col_names rows = do
+  get_rows db stmt cols col_names rows = do
     res <- sqlite3_step stmt
     if res == sQLITE_ROW
       then do
         txts <- mapM (get_sqlite_val stmt) cols
         let row = zip col_names txts
-        get_rows stmt cols col_names (row:rows)
+        get_rows db stmt cols col_names (row:rows)
       else if res == sQLITE_DONE
         then eReturn (reverse rows)
       else to_error db
 
-  then_finalize m stmt = do
+  then_finalize db m stmt = do
     e <- m
     sqlite3_finalize stmt
     case e of
@@ -239,12 +261,12 @@ execParamStatement db query params =
 
 -- | Evaluate the SQL statement specified by 'sqlStmt'
 execStatement :: SQLiteResult a
-               => SQLite -> String -> IO (Either String [[Row a]])
+               => SQLiteHandle -> String -> IO (Either String [[Row a]])
 execStatement db s = execParamStatement db s []
 
 -- | Returns an error, or 'Nothing' if everything was OK.
-execStatement_ :: SQLite -> String -> IO (Maybe String)
-execStatement_ db sqlStmt =
+execStatement_ :: SQLiteHandle -> String -> IO (Maybe String)
+execStatement_ h sqlStmt = withPrim h $ \ db ->
   withCString (UTF8.encodeString sqlStmt)              $ \ c_sqlStmt ->
   sqlite3_exec db c_sqlStmt noCallback nullPtr nullPtr >>= \ st ->
   if st == sQLITE_OK
@@ -297,13 +319,52 @@ get_val stmt n =
        | typ == sQLITE_INTEGER -> Int `fmap` sqlite3_value_int64 val
        | typ == sQLITE_FLOAT   -> Double `fmap` sqlite3_value_double val
        | typ == sQLITE_TEXT    ->
-                      do ptr <- sqlite3_value_text val
-                         bytes <- sqlite3_value_bytes val
-                         str <- peekCStringLen (ptr,fromIntegral bytes)
-                         return $ Text str
+                     fmap Text . peekCStringLen =<< sqlite3_value_cstringlen val
        | typ == sQLITE_BLOB    ->
                       do SQLiteBLOB ptr <- sqlite3_value_blob val
                          bytes <- sqlite3_value_bytes val
                          str <- packCStringLen (castPtr ptr, fromIntegral bytes)
                          return $ Blob str
        | otherwise -> error "get_val: unknown type"
+
+-- | This is the type of the function supported by the 'add_regexp_support'
+--   function. The first argument is the regular expression to match with
+--   and the second argument is the string to match. The result shall be
+--   'True' for successful match and 'False' otherwise.
+type RegexpHandler = ByteString -> ByteString -> IO Bool
+
+-- | This function registers a 'RegexpHandler' to be called when
+--   REGEXP(regexp,str) is used in an SQL query.
+addRegexpSupport :: SQLiteHandle -> RegexpHandler -> IO ()
+addRegexpSupport h f =
+ withCString "REGEXP" $ \ zFunctionName ->
+  do xFunc <- mkStepHandler $ regexp_callback f
+     withPrim h $ \ db ->
+       sqlite3_create_function db zFunctionName 2 sQLITE_UTF8 nullPtr
+                               xFunc noCallback noCallback
+     addSQLiteHandleFinalizer h (freeCallback xFunc)
+
+-- | Internal function to marshall the C types into Haskell types to
+--   make a RegexpHandler compatible with the Sqlite3 API.
+regexp_callback :: RegexpHandler -> StepHandler
+regexp_callback f ctx argc argv =
+  if argc /= 2 then return_fail else
+  do arg0 <- sqlite3_value_cstringlen =<< peek argv
+     arg1 <- sqlite3_value_cstringlen =<< peekElemOff argv 1
+     if isNullCStringLen arg0 || isNullCStringLen arg1 then return_fail else
+       do regexp_str <- unsafePackCStringLen arg0
+          str        <- unsafePackCStringLen arg1
+          res        <- f regexp_str str
+          if res then return_success else return_fail
+  where
+  return_fail    = sqlite3_result_int ctx 0
+  return_success = sqlite3_result_int ctx 1
+
+isNullCStringLen :: CStringLen -> Bool
+isNullCStringLen (p,_) = p == nullPtr
+
+sqlite3_value_cstringlen :: SQLiteValue -> IO CStringLen
+sqlite3_value_cstringlen v =
+ do str <- sqlite3_value_text v
+    len <- sqlite3_value_bytes v
+    return (str, fromIntegral len)

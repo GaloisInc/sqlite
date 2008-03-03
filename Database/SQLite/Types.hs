@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 --------------------------------------------------------------------
 -- |
 -- Module    :  Database.SQLite.Types
@@ -416,3 +417,6 @@ isNullStmt (SQLiteStmt p) = p == nullPtr
 
 noCallback :: SQLiteCallback a
 noCallback = SQLiteCallback nullFunPtr
+
+freeCallback :: SQLiteCallback a -> IO ()
+freeCallback (SQLiteCallback c) = freeHaskellFunPtr c

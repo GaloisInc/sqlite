@@ -1,3 +1,4 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
 --------------------------------------------------------------------
 -- |
 -- Module    : Database.SQLite.Base
@@ -705,4 +706,3 @@ foreign import ccall "sqlite3.h sqlite3_blob_read"
 
 foreign import ccall "sqlite3.h sqlite3_blob_write"
   sqlite3_blob_write :: SQLiteBLOB -> Ptr () -> CInt -> CInt -> IO Status
-

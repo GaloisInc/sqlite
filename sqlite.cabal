@@ -1,5 +1,5 @@
 Name:            sqlite
-Version:         0.3
+Version:         0.4
 Synopsis:        Haskell binding to sqlite3
 Description:
     Haskell binding to sqlite3 <http://sqlite.org/>.
@@ -25,15 +25,15 @@ Extra-Libraries: sqlite3
 extra-source-files:
     README configure
     include/sqlite3-local.h
-    sqlite.buildinfo.unix sqlite.buildinfo.win32 
-    tests/configure tests/Main.hs tests/Setup.hs 
+    sqlite.buildinfo.unix sqlite.buildinfo.win32
+    tests/configure tests/Main.hs tests/Setup.hs
     tests/sqlite-tests.cabal
-    tests/test.db tests/sqlite-tests.buildinfo.unix 
-    tests/sqlite-tests.buildinfo.win32 
+    tests/test.db tests/sqlite-tests.buildinfo.unix
+    tests/sqlite-tests.buildinfo.win32
 extra-tmp-files:
     sqlite.buildinfo
 Exposed-modules:
-    Database.SQLite, 
+    Database.SQLite,
     Database.SQLite.Base,
     Database.SQLite.Types,
     Database.SQL
