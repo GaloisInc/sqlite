@@ -148,9 +148,9 @@ insertRow h tab cs = do
 -- | Return the rowid (as an Integer) of the most recent
 -- successful INSERT into the database.
 --
-getLastRowID :: SQLite -> IO Integer
-getLastRowID h = do
-  v <- sqlite3_last_insert_rowid h
+getLastRowID :: SQLiteHandle -> IO Integer
+getLastRowID h = withPrim h $ \ p -> do
+  v <- sqlite3_last_insert_rowid p
   return (fromIntegral v)
 
 ------------------------------------------------------------------------
