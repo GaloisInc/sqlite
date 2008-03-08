@@ -13,28 +13,56 @@ import Data.Time.LocalTime
 import System.Random (randomRIO)
 import Control.Concurrent (threadDelay)
 
+type DataArray = IOUArray Int Word8
+
 maxPathname :: CInt
 maxPathname = 255
 
 foreign import ccall "sqlite3.h sqlite3_vfs_register" sqliteVfsRegister ::
   Ptr SqliteVFS -> Bool -> IO CInt
 
-init_vfs =
+foreign import ccall "sqlite3.h sqlite3_vfs_find" sqliteVfsFind ::
+  CString -> IO (Ptr SqliteVFS)
+
+foreign import ccall "sqlite3.h sqlite3_vfs_unregister" sqliteVfsUnregister ::
+  Ptr SqliteVFS -> IO CInt
+
+unregisterVFS name =
+ do ptr <- withCString name sqliteVfsFind
+    unless (ptr == nullPtr) $
+     do sqliteVfsUnregister ptr
+        vfs <- peek ptr
+        free (zName vfs)
+        freeHaskellFunPtr (xOpen vfs)
+        freeHaskellFunPtr (xDelete vfs)
+        freeHaskellFunPtr (xAccess vfs)
+        freeHaskellFunPtr (xGetTempname vfs)
+        freeHaskellFunPtr (xFullPathname vfs)
+        freeHaskellFunPtr (xDlOpen vfs)
+        freeHaskellFunPtr (xDlError vfs)
+        freeHaskellFunPtr (xDlSym vfs)
+        freeHaskellFunPtr (xDlClose vfs)
+        freeHaskellFunPtr (xRandomness vfs)
+        freeHaskellFunPtr (xSleep vfs)
+        freeHaskellFunPtr (xCurrentTime vfs)
+        free ptr
+
+register_array_vfs =
  do vfs <- new =<< return (SqliteVFS maxPathname nullPtr)
-           `ap` newCString "filebased"
-           `ap` return nullPtr
-           `ap` mkXOpen   vopen
-           `ap` mkXDelete vdelete
-           `ap` mkXAccess vaccess
-           `ap` mkXGetTempname vgettempname
-           `ap` mkXFullPathname vfullpathname
-           `ap` mkXDlOpen vdlopen
-           `ap` mkXDlError vdlerror
-           `ap` mkXDlSym vdlsym
-           `ap` mkXDlClose vdlclose
-           `ap` mkXRandomness vrandomness
-           `ap` mkXSleep vsleep
-           `ap` mkXCurrentTime vcurrenttime
+                   `ap` newCString "filebased"
+                   `ap` return nullPtr
+                   `ap` mkXOpen   vopen
+                   `ap` mkXDelete vdelete
+                   `ap` mkXAccess vaccess
+                   `ap` mkXGetTempname vgettempname
+                   `ap` mkXFullPathname vfullpathname
+                   `ap` mkXDlOpen vdlopen
+                   `ap` mkXDlError vdlerror
+                   `ap` mkXDlSym vdlsym
+                   `ap` mkXDlClose vdlclose
+                   `ap` mkXRandomness vrandomness
+                   `ap` mkXSleep vsleep
+                   `ap` mkXCurrentTime vcurrenttime
     sqliteVfsRegister vfs True
 
 vopen :: XOpen
@@ -133,14 +161,36 @@ init_file = do
     `ap` mkXDeviceCharacteristics vdevchar
   return (SqliteFile pmeth)
 
-vclose _ = putStrLn "Close" >> return 0
+freeIoMethods ptr =
+ do s <- peek ptr
+    freeHaskellFunPtr (xClose s)
+    freeHaskellFunPtr (xRead s)
+    freeHaskellFunPtr (xWrite s)
+    freeHaskellFunPtr (xTruncate s)
+    freeHaskellFunPtr (xSync s)
+    freeHaskellFunPtr (xFileSize s)
+    freeHaskellFunPtr (xLock s)
+    freeHaskellFunPtr (xUnlock s)
+    freeHaskellFunPtr (xCheckReservedLock s)
+    freeHaskellFunPtr (xFileControl s)
+    freeHaskellFunPtr (xSectorSize s)
+    freeHaskellFunPtr (xDeviceCharacteristics s)
+    free ptr
 
+
+vclose :: XClose
+vclose ptr =
+ do f <- peek ptr
+    freeIoMethods (pMethods (baseFile f))
+    return 0
+
+vread :: IORef DataArray -> XRead
 vread ref _ buffer amt offset =
  do let a = fromIntegral amt
         o = fromIntegral offset
     putStrLn "Read"
     putStrLn (" amt: " ++ show amt)
-    putStrLn (" offsett " ++ show offset)
+    putStrLn (" offset: " ++ show offset)
     sz <- size ref
     arr <- readIORef ref
     forM_ [0..a-1] $ \ i ->
@@ -148,13 +198,13 @@ vread ref _ buffer amt offset =
         else pokeByteOff buffer i =<< readArray arr (i + o)
     return 0
 
-vwrite :: IORef (IOUArray Int Word8) -> XWrite
+vwrite :: IORef DataArray -> XWrite
 vwrite ref _ buffer amt offset =
  do let a = fromIntegral amt
         o = fromIntegral offset
     putStrLn "Write"
     putStrLn (" amt: " ++ show amt)
-    putStrLn (" offsett " ++ show offset)
+    putStrLn (" offset: " ++ show offset)
     sz <- size ref
     when (sz < o + a) (resize ref (o + a))
     arr <- readIORef ref
@@ -162,29 +212,46 @@ vwrite ref _ buffer amt offset =
       writeArray arr (i+o) =<< peekByteOff buffer i
     return 0
 
+vtruncate :: IORef DataArray -> XTruncate
 vtruncate ref _ newsize =
  do putStrLn "Truncate"
     putStrLn (" newsize " ++ show newsize)
     resize ref (fromIntegral newsize)
     return 0
 
+vsync :: XSync
 vsync _ flags = return 0
+
+vfilesize :: IORef DataArray -> XFileSize
 vfilesize ref _ pSize =
  do sz <- size ref
     putStrLn ("Filesize: " ++ show sz)
     poke pSize (fromIntegral sz)
     return 0
 
+vlock :: XLock
 vlock _ flag = return 0
+
+vunlock :: XUnlock
 vunlock _ flag = return 0
+
+vcheckres :: XCheckReservedLock
 vcheckres _ = return 0
+
+vfilecontrol :: XFileControl
 vfilecontrol _ op pArg = return 0
+
+vsectorsize :: XSectorSize
 vsectorsize _ = return 1
+
+vdevchar :: XDeviceCharacteristics
 vdevchar _ = return 1
 
+resize :: IORef DataArray -> Int -> IO ()
 resize ref newsize =
  writeIORef ref =<< newListArray (0,newsize-1) =<< getElems =<< readIORef ref
 
+size :: IORef DataArray -> IO Int
 size ref =
  do (x,y) <- getBounds =<< readIORef ref
     return (y - x + 1)
