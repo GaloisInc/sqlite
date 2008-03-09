@@ -3,10 +3,10 @@ module Database.SQLite.VFS where
 
 import Database.SQLite.VFS.Types
 import Control.Monad
-import Control.Exception
 import Debug.Trace
 import Prelude hiding (catch)
 import System.IO
+import System.IO.Error
 import System.Directory
 import Data.Array.MArray
 import Data.Array.IO
@@ -93,7 +93,13 @@ vaccess _ zName flags =
  do name <- peekCString zName
     putStrLn ("Access: " ++ name)
     putStrLn (" Flags: " ++ show flags)
-    return 0
+    perms <- getPermissions name
+    return $ if      flags == sQLITE_ACCESS_EXISTS    then True
+             else if flags == sQLITE_ACCESS_READ      then readable perms
+             else if flags == sQLITE_ACCESS_READWRITE then readable perms &&
+                                                           writable perms
+             else False
+  `catch` \ e -> if isDoesNotExistError e then return False else ioError e
 
 vgettempname :: XGetTempname
 vgettempname _ nOut zOut =

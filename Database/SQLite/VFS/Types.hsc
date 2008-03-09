@@ -14,7 +14,7 @@ import Foreign.C
 type XOpen = Ptr SqliteVFS -> CString -> Ptr MySqliteFile -> CInt -> Ptr CInt
            -> IO CInt
 type XDelete            = Ptr SqliteVFS -> CString -> CInt    -> IO CInt
-type XAccess            = Ptr SqliteVFS -> CString -> CInt    -> IO CInt
+type XAccess            = Ptr SqliteVFS -> CString -> SqliteAccessFlag -> IO Bool
 type XGetTempname       = Ptr SqliteVFS -> CInt    -> CString -> IO CInt
 type XFullPathname      = Ptr SqliteVFS -> CString -> CInt    -> CString -> IO CInt
 type XDlOpen            = Ptr SqliteVFS -> CString -> IO ()
@@ -132,8 +132,8 @@ type XWrite             = Ptr MySqliteFile -> Ptr Word8 -> CInt -> Int64 -> IO C
 type XTruncate          = Ptr MySqliteFile -> Int64 -> IO CInt
 type XSync              = Ptr MySqliteFile -> CInt -> IO CInt
 type XFileSize          = Ptr MySqliteFile -> Ptr Int64 -> IO CInt
-type XLock              = Ptr MySqliteFile -> CInt -> IO CInt
-type XUnlock            = Ptr MySqliteFile -> CInt -> IO CInt
+type XLock              = Ptr MySqliteFile -> SqliteLockFlag -> IO CInt
+type XUnlock            = Ptr MySqliteFile -> SqliteLockFlag -> IO CInt
 type XCheckReservedLock = Ptr MySqliteFile -> IO CInt
 type XFileControl       = Ptr MySqliteFile -> CInt -> Ptr () -> IO CInt
 type XSectorSize        = Ptr MySqliteFile -> IO CInt
@@ -201,3 +201,19 @@ instance Storable SqliteIoMethods where
     (#poke sqlite3_io_methods, xSectorSize) ptr (xSectorSize s)
     (#poke sqlite3_io_methods, xDeviceCharacteristics) ptr
                                                      (xDeviceCharacteristics s)
+
+type SqliteLockFlag = CInt
+sQLITE_LOCK_NONE, sQLITE_LOCK_SHARED, sQLITE_LOCK_RESERVED,
+  sQLITE_LOCK_PENDING, sQLITE_LOCK_EXCLUSIVE :: SqliteLockFlag
+sQLITE_LOCK_NONE        = (#const SQLITE_LOCK_NONE)
+sQLITE_LOCK_SHARED      = (#const SQLITE_LOCK_SHARED)
+sQLITE_LOCK_RESERVED    = (#const SQLITE_LOCK_RESERVED)
+sQLITE_LOCK_PENDING     = (#const SQLITE_LOCK_PENDING)
+sQLITE_LOCK_EXCLUSIVE   = (#const SQLITE_LOCK_EXCLUSIVE)
+
+type SqliteAccessFlag = CInt
+sQLITE_ACCESS_EXISTS, sQLITE_ACCESS_READWRITE, sQLITE_ACCESS_READ
+                                                            :: SqliteAccessFlag
+sQLITE_ACCESS_EXISTS    = (#const SQLITE_ACCESS_EXISTS)
+sQLITE_ACCESS_READ      = (#const SQLITE_ACCESS_READ)
+sQLITE_ACCESS_READWRITE = (#const SQLITE_ACCESS_READWRITE)
