@@ -6,24 +6,25 @@ import Control.Monad
 import Foreign
 import Foreign.C
 
+import Database.SQLite.Types
 #include "sqlite3.h"
 #include "sqlite3-local.h"
 #include <stddef.h>
 #let alignment t = "%lu", (unsigned long)offsetof(struct {char x__; t (y__); }, y__)
 
 type XOpen = Ptr SqliteVFS -> CString -> Ptr MySqliteFile -> CInt -> Ptr CInt
-           -> IO CInt
-type XDelete            = Ptr SqliteVFS -> CString -> CInt    -> IO CInt
-type XAccess            = Ptr SqliteVFS -> CString -> SqliteAccessFlag -> IO Bool
-type XGetTempname       = Ptr SqliteVFS -> CInt    -> CString -> IO CInt
-type XFullPathname      = Ptr SqliteVFS -> CString -> CInt    -> CString -> IO CInt
+           -> IO Status
+type XDelete            = Ptr SqliteVFS -> CString -> CInt    -> IO Status
+type XAccess            = Ptr SqliteVFS -> CString -> AccessFlag -> IO Bool
+type XGetTempname       = Ptr SqliteVFS -> CInt    -> CString -> IO Status
+type XFullPathname      = Ptr SqliteVFS -> CString -> CInt    -> CString -> IO Status
 type XDlOpen            = Ptr SqliteVFS -> CString -> IO ()
 type XDlError           = Ptr SqliteVFS -> CInt    -> CString -> IO ()
 type XDlSym             = Ptr SqliteVFS -> Ptr ()  -> CString -> IO ()
 type XDlClose           = Ptr SqliteVFS -> Ptr ()  -> IO ()
-type XRandomness        = Ptr SqliteVFS -> CInt    -> CString -> IO CInt
-type XSleep             = Ptr SqliteVFS -> CInt    -> IO CInt
-type XCurrentTime       = Ptr SqliteVFS -> Ptr CDouble -> IO CInt
+type XRandomness        = Ptr SqliteVFS -> CInt    -> Ptr Word8 -> IO CInt
+type XSleep             = Ptr SqliteVFS -> CInt    -> IO Status
+type XCurrentTime       = Ptr SqliteVFS -> Ptr CDouble -> IO Status
 
 foreign import ccall "wrapper" mkXOpen :: XOpen -> IO (FunPtr XOpen)
 foreign import ccall "wrapper" mkXDelete :: XDelete -> IO (FunPtr XDelete)
@@ -126,18 +127,18 @@ instance Storable SqliteFile where
                                   `ap` (#peek sqlite3_file, pMethods) ptr
   poke ptr s                  = (#poke sqlite3_file, pMethods) ptr (pMethods s)
 
-type XClose             = Ptr MySqliteFile -> IO CInt
-type XRead              = Ptr MySqliteFile -> Ptr Word8 -> CInt -> Int64 -> IO CInt
-type XWrite             = Ptr MySqliteFile -> Ptr Word8 -> CInt -> Int64 -> IO CInt
-type XTruncate          = Ptr MySqliteFile -> Int64 -> IO CInt
-type XSync              = Ptr MySqliteFile -> CInt -> IO CInt
-type XFileSize          = Ptr MySqliteFile -> Ptr Int64 -> IO CInt
-type XLock              = Ptr MySqliteFile -> SqliteLockFlag -> IO CInt
-type XUnlock            = Ptr MySqliteFile -> SqliteLockFlag -> IO CInt
-type XCheckReservedLock = Ptr MySqliteFile -> IO CInt
-type XFileControl       = Ptr MySqliteFile -> CInt -> Ptr () -> IO CInt
+type XClose             = Ptr MySqliteFile -> IO Status
+type XRead              = Ptr MySqliteFile -> Ptr Word8 -> CInt -> Int64 -> IO Status
+type XWrite             = Ptr MySqliteFile -> Ptr Word8 -> CInt -> Int64 -> IO Status
+type XTruncate          = Ptr MySqliteFile -> Int64 -> IO Status
+type XSync              = Ptr MySqliteFile -> CInt -> IO Status
+type XFileSize          = Ptr MySqliteFile -> Ptr Int64 -> IO Status
+type XLock              = Ptr MySqliteFile -> LockFlag -> IO Status
+type XUnlock            = Ptr MySqliteFile -> LockFlag -> IO Status
+type XCheckReservedLock = Ptr MySqliteFile -> IO Bool
+type XFileControl       = Ptr MySqliteFile -> CInt -> Ptr () -> IO Status
 type XSectorSize        = Ptr MySqliteFile -> IO CInt
-type XDeviceCharacteristics = Ptr MySqliteFile -> IO CInt
+type XDeviceCharacteristics = Ptr MySqliteFile -> IO IOCap
 
 foreign import ccall "wrapper" mkXClose :: XClose -> IO (FunPtr XClose)
 foreign import ccall "wrapper" mkXRead  :: XRead  -> IO (FunPtr XRead)
@@ -202,18 +203,3 @@ instance Storable SqliteIoMethods where
     (#poke sqlite3_io_methods, xDeviceCharacteristics) ptr
                                                      (xDeviceCharacteristics s)
 
-type SqliteLockFlag = CInt
-sQLITE_LOCK_NONE, sQLITE_LOCK_SHARED, sQLITE_LOCK_RESERVED,
-  sQLITE_LOCK_PENDING, sQLITE_LOCK_EXCLUSIVE :: SqliteLockFlag
-sQLITE_LOCK_NONE        = (#const SQLITE_LOCK_NONE)
-sQLITE_LOCK_SHARED      = (#const SQLITE_LOCK_SHARED)
-sQLITE_LOCK_RESERVED    = (#const SQLITE_LOCK_RESERVED)
-sQLITE_LOCK_PENDING     = (#const SQLITE_LOCK_PENDING)
-sQLITE_LOCK_EXCLUSIVE   = (#const SQLITE_LOCK_EXCLUSIVE)
-
-type SqliteAccessFlag = CInt
-sQLITE_ACCESS_EXISTS, sQLITE_ACCESS_READWRITE, sQLITE_ACCESS_READ
-                                                            :: SqliteAccessFlag
-sQLITE_ACCESS_EXISTS    = (#const SQLITE_ACCESS_EXISTS)
-sQLITE_ACCESS_READ      = (#const SQLITE_ACCESS_READ)
-sQLITE_ACCESS_READWRITE = (#const SQLITE_ACCESS_READWRITE)

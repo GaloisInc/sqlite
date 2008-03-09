@@ -2,6 +2,7 @@
 *.hi
 dist
 *~
+*.swp
 .installed-pkg-config
 .setup-config
 

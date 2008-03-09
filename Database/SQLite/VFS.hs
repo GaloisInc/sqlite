@@ -1,4 +1,3 @@
-{-# LANGUAGE PatternSignatures #-}
 module Database.SQLite.VFS where
 
 import Database.SQLite.VFS.Types
@@ -8,21 +7,21 @@ import Prelude hiding (catch)
 import System.IO
 import System.IO.Error
 import System.Directory
-import Data.Array.MArray
-import Data.Array.IO
 import Data.IORef
 import Foreign.Ptr
 import Foreign.C
 import Foreign
 import Data.Time.Clock
 import Data.Time.LocalTime
-import System.Random (randomRIO)
 import Control.Concurrent (threadDelay)
 
-type DataArray = IOUArray Int Word8
+import Database.SQLite.Types
 
 maxPathname :: CInt
 maxPathname = 255
+
+blockSize :: Int
+blockSize = 1024
 
 foreign import ccall "sqlite3.h sqlite3_vfs_register" sqliteVfsRegister ::
   Ptr SqliteVFS -> Bool -> IO CInt
@@ -78,7 +77,7 @@ vopen _ zName my_file_ptr flags pOutFlags =
     f <- init_my_file zName
     poke my_file_ptr f
     createDirectoryIfMissing False name
-    return 0
+    return sQLITE_OK
 
 vdelete :: XDelete
 vdelete _ zName syncDir =
@@ -86,7 +85,7 @@ vdelete _ zName syncDir =
     putStrLn ("Delete: " ++ name)
     putStrLn (" Sync: " ++ show syncDir)
     removeDirectoryRecursive name
-    return 0
+    return sQLITE_OK
 
 vaccess :: XAccess
 vaccess _ zName flags =
@@ -103,13 +102,13 @@ vaccess _ zName flags =
 
 vgettempname :: XGetTempname
 vgettempname _ nOut zOut =
- do i <- randomRIO (100::Int,10000)
+ do let i = 42 :: Int
     let name = show i
     putStrLn ("GetTempname: " ++ name)
     if length name <= fromIntegral nOut
       then do pokeCString zOut name
-              return 0
-      else return 1
+              return sQLITE_OK
+      else return sQLITE_ERROR
 
 vfullpathname :: XFullPathname
 vfullpathname _ zName nOut zOut =
@@ -117,8 +116,8 @@ vfullpathname _ zName nOut zOut =
     putStrLn ("FullPathname: " ++ name)
     if length name <= fromIntegral nOut
       then do pokeCString zOut name
-              return 0
-      else return 1
+              return sQLITE_OK
+      else return sQLITE_ERROR
 
 vdlopen :: XDlOpen
 vdlopen = error "xDlOpen"
@@ -135,12 +134,12 @@ vdlclose = error "xDlClose"
 vrandomness :: XRandomness
 vrandomness _ nByte zOut =
  do putStrLn ("Randomness: " ++ show nByte)
-    xs <- replicateM (fromIntegral nByte) (randomRIO (-128::Int,127))
-    pokeArray zOut $ map toEnum xs
+    withBinaryFile "/dev/urandom" ReadMode $ \ h ->
+      hGetBuf h zOut (fromIntegral nByte)
     return nByte
 
 vsleep :: XSleep
-vsleep _ us = threadDelay (fromIntegral us) >> return 0
+vsleep _ us = threadDelay (fromIntegral us) >> return sQLITE_OK
 
 vcurrenttime :: XCurrentTime
 vcurrenttime _ ptr =
@@ -150,7 +149,7 @@ vcurrenttime _ ptr =
         ut1 = localTimeToUT1 0 local
         m   = getModJulianDate ut1
     poke ptr (fromRational m)
-    return 0
+    return sQLITE_OK
 
 pokeCString :: Ptr CChar -> String -> IO ()
 pokeCString ptr xs = pokeArray0 0 ptr (map (toEnum . fromEnum) xs)
@@ -196,38 +195,45 @@ freeIoMethods ptr =
 vclose :: XClose
 vclose ptr =
  do freeIoMethods . pMethods . myBaseFile =<< peek ptr
-    return 0
+    return sQLITE_OK
 
 getMyFilename :: Ptr MySqliteFile -> IO String
 getMyFilename ptr = peekCString . myFilename =<< peek ptr
 
-doRead ptr name i fn amt offset
-  | amt <= 0 = return 0
-  | otherwise = do
-  let amt' = min (1024 - offset) amt
+doRead ptr name fn 0 offset = return 0
+doRead ptr name fn amt offset = do
+  let amt' = min (blockSize - offset) amt
   got <- (withBinaryFile (name ++ "/" ++ show fn) ReadMode $ \ h ->
            do hSeek h AbsoluteSeek (fromIntegral offset)
-              hGetBuf h (ptr `advancePtr` i) amt')
-         `catch` \ _ -> return 0
+              hGetBuf h ptr amt'
+          ) `catch` \ e -> if isDoesNotExistError e then return 0 else ioError e
   if got < amt' then return got else do
-    got' <- doRead ptr name (i+got) (fn+1) (amt-got) 0
+    got' <- doRead (ptr `advancePtr` got) name (fn+1) (amt-got) 0
     return (got + got')
 
-doWrite :: Ptr Word8 -> String -> Int -> Int -> Int -> Int -> IO ()
-doWrite ptr name i fn amt offset
-  | amt <= 0 = return ()
-  | otherwise = do
-  let amt' = min (1024 - offset) amt
-  allocaArray 1024 $ \ (arr :: Ptr Word8) -> do
-    (withBinaryFile (name ++ "/" ++ show fn) ReadMode $ \ h ->
-      hGetBuf h arr 1024) `catch` \ _ -> return 0
-    copyWord8Array (arr `advancePtr` offset) (ptr `advancePtr` i) amt'
-    withBinaryFile (name ++ "/" ++ show fn) WriteMode $ \ h ->
-      hPutBuf h arr 1024
-  doWrite ptr name (i+amt') (fn+1) (amt-amt') 0
+doWrite :: Ptr Word8 -> String -> Int -> Int -> Int -> IO ()
+-- finished writing
+doWrite _ _ _ 0 _ = return ()
 
-copyWord8Array :: Ptr Word8 -> Ptr Word8 -> Int -> IO ()
-copyWord8Array = copyArray
+-- writing a full block
+doWrite ptr name fn amt 0 | amt >= blockSize =
+ do withBinaryFile (name ++ "/" ++ show fn) WriteMode $ \ h ->
+      hPutBuf h ptr blockSize
+    doWrite (ptr `advancePtr` blockSize) name (fn+1) (amt-blockSize) 0
+
+-- writing a partial block
+doWrite ptr name fn amt offset = do
+  let amt' = min (blockSize - offset) amt
+  allocaArray blockSize $ \ tempArray ->
+   do (withBinaryFile (name ++ "/" ++ show fn) ReadMode $ \ h ->
+         hGetBuf h (tempArray :: Ptr Word8) blockSize
+       ) `catch` \ e -> if isDoesNotExistError e then return 0 else ioError e
+      withBinaryFile (name ++ "/" ++ show fn) WriteMode $ \ h ->
+       do hPutBuf h tempArray offset
+          hPutBuf h ptr amt'
+          hPutBuf h (tempArray `advancePtr` (offset + amt'))
+                    (blockSize - offset - amt')
+  doWrite (ptr `advancePtr` amt') name (fn+1) (amt-amt') 0
 
 vread :: XRead
 vread p buffer amt offset =
@@ -237,9 +243,10 @@ vread p buffer amt offset =
     putStrLn ("Read: " ++ name)
     putStrLn (" amt: " ++ show amt)
     putStrLn (" offset: " ++ show offset)
-    let firstNumber = o `div` 1024
-    got <- doRead buffer name 0 firstNumber a (o - firstNumber * 1024)
-    if got < a then return 522 else return 0
+    let firstNumber = o `div` blockSize
+    (do got <- doRead buffer name firstNumber a (o - firstNumber * blockSize)
+        return $ if got < a then sQLITE_IOERR_SHORT_READ else sQLITE_OK
+     ) `catch` \ _ -> return sQLITE_IOERR_READ
 
 vwrite :: XWrite
 vwrite p buffer amt offset =
@@ -249,42 +256,42 @@ vwrite p buffer amt offset =
     putStrLn "Write"
     putStrLn (" amt: " ++ show amt)
     putStrLn (" offset: " ++ show offset)
-    let firstNumber = o `div` 1024
-    doWrite buffer name 0 firstNumber a (o - firstNumber * 1024)
-    return 0
+    let firstNumber = o `div` blockSize
+    doWrite buffer name firstNumber a (o - firstNumber * blockSize)
+    return sQLITE_OK
 
 vtruncate :: XTruncate
 vtruncate p newsize =
  do name <- getMyFilename p
     putStrLn "Truncate"
     putStrLn (" newsize " ++ show newsize)
-    return 0
+    return sQLITE_OK
 
 vsync :: XSync
-vsync _ flags = return 0
+vsync _ flags = return sQLITE_OK
 
 vfilesize :: XFileSize
 vfilesize p pSize =
  do name <- getMyFilename p
     putStrLn ("Filesize: " ++ name)
     xs <- getDirectoryContents name `catch` \ _ -> return ["",""]
-    poke pSize (fromIntegral (1024 * (length xs - 2)))
-    return 0
+    poke pSize (fromIntegral (blockSize * (length xs - 2)))
+    return sQLITE_OK
 
 vlock :: XLock
-vlock _ flag = return 0
+vlock _ flag = return sQLITE_OK
 
 vunlock :: XUnlock
-vunlock _ flag = return 0
+vunlock _ flag = return sQLITE_OK
 
 vcheckres :: XCheckReservedLock
-vcheckres _ = return 0
+vcheckres _ = return False
 
 vfilecontrol :: XFileControl
-vfilecontrol _ op pArg = return 0
+vfilecontrol _ op pArg = return sQLITE_OK
 
 vsectorsize :: XSectorSize
-vsectorsize _ = return 1024
+vsectorsize _ = return (fromIntegral blockSize)
 
 vdevchar :: XDeviceCharacteristics
-vdevchar _ = return 1
+vdevchar _ = return sQLITE_IOCAP_ATOMIC1K
