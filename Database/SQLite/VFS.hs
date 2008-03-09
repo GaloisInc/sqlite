@@ -1,7 +1,13 @@
+{-# LANGUAGE PatternSignatures #-}
 module Database.SQLite.VFS where
 
 import Database.SQLite.VFS.Types
 import Control.Monad
+import Control.Exception
+import Debug.Trace
+import Prelude hiding (catch)
+import System.IO
+import System.Directory
 import Data.Array.MArray
 import Data.Array.IO
 import Data.IORef
@@ -47,7 +53,7 @@ unregisterVFS name =
         freeHaskellFunPtr (xCurrentTime vfs)
         free ptr
 
-register_array_vfs =
+registerDirectoryVfs =
  do vfs <- new =<< return (SqliteVFS maxPathname nullPtr)
                    `ap` newCString "filebased"
                    `ap` return nullPtr
@@ -69,8 +75,9 @@ vopen :: XOpen
 vopen _ zName my_file_ptr flags pOutFlags =
  do name <- peekCString zName
     putStrLn ("Open: " ++ name)
-    f <- init_my_file
+    f <- init_my_file zName
     poke my_file_ptr f
+    createDirectoryIfMissing False name
     return 0
 
 vdelete :: XDelete
@@ -78,6 +85,7 @@ vdelete _ zName syncDir =
  do name <- peekCString zName
     putStrLn ("Delete: " ++ name)
     putStrLn (" Sync: " ++ show syncDir)
+    removeDirectoryRecursive name
     return 0
 
 vaccess :: XAccess
@@ -141,25 +149,26 @@ vcurrenttime _ ptr =
 pokeCString :: Ptr CChar -> String -> IO ()
 pokeCString ptr xs = pokeArray0 0 ptr (map (toEnum . fromEnum) xs)
 
-init_my_file = liftM MySqliteFile init_file
+init_my_file :: CString -> IO MySqliteFile
+init_my_file zName = return MySqliteFile `ap` init_file `ap` return zName
 
-init_file = do
-  arr <- Data.Array.MArray.newArray (0,-1) 0
-  ref <- newIORef arr
-  pmeth <- new =<< return SqliteIoMethods
+init_file = SqliteFile `fmap` (new =<< init_io_methods)
+
+init_io_methods :: IO SqliteIoMethods
+init_io_methods =
+  return SqliteIoMethods
     `ap` mkXClose vclose
-    `ap` mkXRead  (vread ref)
-    `ap` mkXWrite (vwrite ref)
-    `ap` mkXTruncate (vtruncate ref)
+    `ap` mkXRead  vread
+    `ap` mkXWrite vwrite
+    `ap` mkXTruncate vtruncate
     `ap` mkXSync vsync
-    `ap` mkXFileSize (vfilesize ref)
+    `ap` mkXFileSize vfilesize
     `ap` mkXLock vlock
     `ap` mkXUnlock vunlock
     `ap` mkXCheckReservedLock vcheckres
     `ap` mkXFileControl vfilecontrol
     `ap` mkXSectorSize vsectorsize
     `ap` mkXDeviceCharacteristics vdevchar
-  return (SqliteFile pmeth)
 
 freeIoMethods ptr =
  do s <- peek ptr
@@ -180,53 +189,80 @@ freeIoMethods ptr =
 
 vclose :: XClose
 vclose ptr =
- do f <- peek ptr
-    freeIoMethods (pMethods (baseFile f))
+ do freeIoMethods . pMethods . myBaseFile =<< peek ptr
     return 0
 
-vread :: IORef DataArray -> XRead
-vread ref _ buffer amt offset =
- do let a = fromIntegral amt
+getMyFilename :: Ptr MySqliteFile -> IO String
+getMyFilename ptr = peekCString . myFilename =<< peek ptr
+
+doRead ptr name i fn amt offset
+  | amt <= 0 = return 0
+  | otherwise = do
+  let amt' = min (1024 - offset) amt
+  got <- (withBinaryFile (name ++ "/" ++ show fn) ReadMode $ \ h ->
+           do hSeek h AbsoluteSeek (fromIntegral offset)
+              hGetBuf h (ptr `advancePtr` i) amt')
+         `catch` \ _ -> return 0
+  if got < amt' then return got else do
+    got' <- doRead ptr name (i+got) (fn+1) (amt-got) 0
+    return (got + got')
+
+doWrite :: Ptr Word8 -> String -> Int -> Int -> Int -> Int -> IO ()
+doWrite ptr name i fn amt offset
+  | amt <= 0 = return ()
+  | otherwise = do
+  let amt' = min (1024 - offset) amt
+  allocaArray 1024 $ \ (arr :: Ptr Word8) -> do
+    (withBinaryFile (name ++ "/" ++ show fn) ReadMode $ \ h ->
+      hGetBuf h arr 1024) `catch` \ _ -> return 0
+    copyWord8Array (arr `advancePtr` offset) (ptr `advancePtr` i) amt'
+    withBinaryFile (name ++ "/" ++ show fn) WriteMode $ \ h ->
+      hPutBuf h arr 1024
+  doWrite ptr name (i+amt') (fn+1) (amt-amt') 0
+
+copyWord8Array :: Ptr Word8 -> Ptr Word8 -> Int -> IO ()
+copyWord8Array = copyArray
+
+vread :: XRead
+vread p buffer amt offset =
+ do name <- getMyFilename p
+    let a = fromIntegral amt
         o = fromIntegral offset
-    putStrLn "Read"
+    putStrLn ("Read: " ++ name)
     putStrLn (" amt: " ++ show amt)
     putStrLn (" offset: " ++ show offset)
-    sz <- size ref
-    arr <- readIORef ref
-    forM_ [0..a-1] $ \ i ->
-      if i + o >= sz then pokeByteOff buffer i (0 :: Word8)
-        else pokeByteOff buffer i =<< readArray arr (i + o)
-    return 0
+    let firstNumber = o `div` 1024
+    got <- doRead buffer name 0 firstNumber a (o - firstNumber * 1024)
+    if got < a then return 522 else return 0
 
-vwrite :: IORef DataArray -> XWrite
-vwrite ref _ buffer amt offset =
- do let a = fromIntegral amt
+vwrite :: XWrite
+vwrite p buffer amt offset =
+ do name <- getMyFilename p
+    let a = fromIntegral amt
         o = fromIntegral offset
     putStrLn "Write"
     putStrLn (" amt: " ++ show amt)
     putStrLn (" offset: " ++ show offset)
-    sz <- size ref
-    when (sz < o + a) (resize ref (o + a))
-    arr <- readIORef ref
-    forM_ [0..a-1] $ \ i ->
-      writeArray arr (i+o) =<< peekByteOff buffer i
+    let firstNumber = o `div` 1024
+    doWrite buffer name 0 firstNumber a (o - firstNumber * 1024)
     return 0
 
-vtruncate :: IORef DataArray -> XTruncate
-vtruncate ref _ newsize =
- do putStrLn "Truncate"
+vtruncate :: XTruncate
+vtruncate p newsize =
+ do name <- getMyFilename p
+    putStrLn "Truncate"
     putStrLn (" newsize " ++ show newsize)
-    resize ref (fromIntegral newsize)
     return 0
 
 vsync :: XSync
 vsync _ flags = return 0
 
-vfilesize :: IORef DataArray -> XFileSize
-vfilesize ref _ pSize =
- do sz <- size ref
-    putStrLn ("Filesize: " ++ show sz)
-    poke pSize (fromIntegral sz)
+vfilesize :: XFileSize
+vfilesize p pSize =
+ do name <- getMyFilename p
+    putStrLn ("Filesize: " ++ name)
+    xs <- getDirectoryContents name `catch` \ _ -> return ["",""]
+    poke pSize (fromIntegral (1024 * (length xs - 2)))
     return 0
 
 vlock :: XLock
@@ -242,16 +278,7 @@ vfilecontrol :: XFileControl
 vfilecontrol _ op pArg = return 0
 
 vsectorsize :: XSectorSize
-vsectorsize _ = return 1
+vsectorsize _ = return 1024
 
 vdevchar :: XDeviceCharacteristics
 vdevchar _ = return 1
-
-resize :: IORef DataArray -> Int -> IO ()
-resize ref newsize =
- writeIORef ref =<< newListArray (0,newsize-1) =<< getElems =<< readIORef ref
-
-size :: IORef DataArray -> IO Int
-size ref =
- do (x,y) <- getBounds =<< readIORef ref
-    return (y - x + 1)

@@ -103,7 +103,8 @@ instance Storable SqliteVFS where
                  (#poke sqlite3_vfs, xCurrentTime) ptr (xCurrentTime s)
 
 data MySqliteFile = MySqliteFile
-        { baseFile :: SqliteFile
+        { myBaseFile :: SqliteFile
+        , myFilename :: CString
         }
 
 instance Storable MySqliteFile where
@@ -111,7 +112,9 @@ instance Storable MySqliteFile where
   alignment _                   = #alignment my_sqlite3_file
   peek ptr                      = return MySqliteFile
                                  `ap` (#peek my_sqlite3_file, base_file) ptr
-  poke ptr s              = (#poke my_sqlite3_file, base_file) ptr (baseFile s)
+                                 `ap` (#peek my_sqlite3_file, zFilename) ptr
+  poke ptr s          = do (#poke my_sqlite3_file, base_file) ptr (myBaseFile s)
+                           (#poke my_sqlite3_file, zFilename) ptr (myFilename s)
 
 data SqliteFile = SqliteFile
         { pMethods :: Ptr SqliteIoMethods }
@@ -124,8 +127,8 @@ instance Storable SqliteFile where
   poke ptr s                  = (#poke sqlite3_file, pMethods) ptr (pMethods s)
 
 type XClose             = Ptr MySqliteFile -> IO CInt
-type XRead              = Ptr MySqliteFile -> Ptr () -> CInt -> Int64 -> IO CInt
-type XWrite             = Ptr MySqliteFile -> Ptr () -> CInt -> Int64 -> IO CInt
+type XRead              = Ptr MySqliteFile -> Ptr Word8 -> CInt -> Int64 -> IO CInt
+type XWrite             = Ptr MySqliteFile -> Ptr Word8 -> CInt -> Int64 -> IO CInt
 type XTruncate          = Ptr MySqliteFile -> Int64 -> IO CInt
 type XSync              = Ptr MySqliteFile -> CInt -> IO CInt
 type XFileSize          = Ptr MySqliteFile -> Ptr Int64 -> IO CInt
