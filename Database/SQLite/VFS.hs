@@ -90,8 +90,7 @@ vdelete _ zName syncDir =
 vaccess :: XAccess
 vaccess _ zName flags =
  do name <- peekCString zName
-    putStrLn ("Access: " ++ name)
-    putStrLn (" Flags: " ++ show flags)
+    putStrLn ("Access: " ++ name ++ " " ++ showAccess flags)
     perms <- getPermissions name
     return $ if      flags == sQLITE_ACCESS_EXISTS    then True
              else if flags == sQLITE_ACCESS_READ      then readable perms
@@ -279,10 +278,26 @@ vfilesize p pSize =
     return sQLITE_OK
 
 vlock :: XLock
-vlock _ flag = putStr "lock: " >> print flag >> return sQLITE_OK
+vlock ptr flag =
+  do s <- (peekCString . myFilename) =<< peek ptr
+     putStrLn ("lock: " ++ s ++ " " ++ showLock flag)
+     return sQLITE_OK
 
 vunlock :: XUnlock
-vunlock _ flag = putStr "unlock: " >> print flag >> return sQLITE_OK
+vunlock ptr flag =
+  do s <- (peekCString . myFilename) =<< peek ptr
+     putStrLn ("unlock: " ++ s ++ " " ++ showLock flag)
+     return sQLITE_OK
+
+-- note: could be combined
+showAccess x = checks !! fromIntegral x
+  where checks = ["EXISTS", "READWRITE", "READ"]
+                    ++ repeat ("unknown " ++ show x)
+
+showLock x = locks !! fromIntegral x
+  where locks = ["NONE", "SHARED", "RESERVED", "PENDING", "EXCLUSIVE"]
+                ++ repeat ("unknown " ++ show x)
+
 
 vcheckres :: XCheckReservedLock
 vcheckres _ = return False
