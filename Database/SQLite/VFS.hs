@@ -279,10 +279,10 @@ vfilesize p pSize =
     return sQLITE_OK
 
 vlock :: XLock
-vlock _ flag = return sQLITE_OK
+vlock _ flag = putStr "lock: " >> print flag >> return sQLITE_OK
 
 vunlock :: XUnlock
-vunlock _ flag = return sQLITE_OK
+vunlock _ flag = putStr "unlock: " >> print flag >> return sQLITE_OK
 
 vcheckres :: XCheckReservedLock
 vcheckres _ = return False
