@@ -84,8 +84,8 @@ newSQLiteHandle (SQLite p) m = SQLiteHandle `fmap` Conc.newForeignPtr p m
 -- An exception is thrown if the database could not be opened.
 --
 openConnection :: String -> IO SQLiteHandle
-openConnection dbName = do
-  ptr <- malloc
+openConnection dbName =
+  alloca $ \ptr -> do
   st  <- withCString dbName $ \ c_dbName ->
                 sqlite3_open c_dbName ptr
   case st of
