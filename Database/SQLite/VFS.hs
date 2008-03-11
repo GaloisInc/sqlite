@@ -1,52 +1,53 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
 module Database.SQLite.VFS where
 
-import Database.SQLite.VFS.Types
+import Control.Concurrent (threadDelay)
 import Control.Monad
-import Debug.Trace
-import Prelude hiding (catch)
-import System.IO
-import System.IO.Error
-import System.Directory
-import Data.IORef
-import Foreign.Ptr
-import Foreign.C
-import Foreign
+import Data.List
 import Data.Time.Clock
 import Data.Time.LocalTime
-import Control.Concurrent (threadDelay)
+import Database.SQLite.VFS.Types
+import Foreign
+import Foreign.C
+import Foreign.Ptr
+import Prelude hiding (catch)
+import System.Directory
+import System.IO
+import System.IO.Error
 
 import Database.SQLite.Types
 
 maxPathname :: CInt
-maxPathname = 255
+maxPathname = 512
 
 blockSize :: Int
 blockSize = 1024
 
 foreign import ccall "sqlite3.h sqlite3_vfs_register" sqliteVfsRegister ::
-  Ptr SqliteVFS -> Bool -> IO CInt
+  Ptr SqliteVFS -> Bool -> IO Status
 
 foreign import ccall "sqlite3.h sqlite3_vfs_find" sqliteVfsFind ::
   CString -> IO (Ptr SqliteVFS)
 
 foreign import ccall "sqlite3.h sqlite3_vfs_unregister" sqliteVfsUnregister ::
-  Ptr SqliteVFS -> IO CInt
+  Ptr SqliteVFS -> IO Status
 
 foreign import ccall "little_locks.h get_shared"
   get_shared :: CSize -> CString -> IO Int
 
-foreign import ccall "little_locks.h get_shared"
+foreign import ccall "little_locks.h get_reserved"
   get_reserved :: CString -> IO Int
 
-foreign import ccall "little_locks.h get_shared"
+foreign import ccall "little_locks.h get_exclusive"
   get_exclusive :: IO Int
 
-foreign import ccall "little_locks.h get_shared"
+foreign import ccall "little_locks.h free_exclusive"
   free_exclusive :: CSize -> CString -> IO Int
 
-foreign import ccall "little_locks.h get_shared"
+foreign import ccall "little_locks.h free_shared"
   free_shared :: CString -> IO Int
 
+unregisterVFS :: String -> IO ()
 unregisterVFS name =
  do ptr <- withCString name sqliteVfsFind
     unless (ptr == nullPtr) $
@@ -67,11 +68,12 @@ unregisterVFS name =
         freeHaskellFunPtr (xCurrentTime vfs)
         free ptr
 
-registerDirectoryVfs =
+registerDirectoryVFS :: IO Status
+registerDirectoryVFS =
  do vfs <- new =<< return (SqliteVFS maxPathname nullPtr)
                    `ap` newCString "filebased"
                    `ap` return nullPtr
-                   `ap` mkXOpen   vopen
+                   `ap` mkXOpen vopen
                    `ap` mkXDelete vdelete
                    `ap` mkXAccess vaccess
                    `ap` mkXGetTempname vgettempname
@@ -89,10 +91,10 @@ vopen :: XOpen
 vopen _ zName my_file_ptr flags pOutFlags =
  do name <- peekCString zName
     putStrLn ("Open: " ++ name)
-    f <- init_my_file zName
-    poke my_file_ptr f
     createDirectoryIfMissing False name
+    poke my_file_ptr =<< init_my_file zName
     return sQLITE_OK
+   `catch` \ _ -> return sQLITE_CANTOPEN
 
 vdelete :: XDelete
 vdelete _ zName syncDir =
@@ -112,7 +114,7 @@ vaccess _ zName flags =
              else if flags == sQLITE_ACCESS_READWRITE then readable perms &&
                                                            writable perms
              else False
-  `catch` \ e -> if isDoesNotExistError e then return False else ioError e
+  `catch` \ _ -> return False
 
 vgettempname :: XGetTempname
 vgettempname _ nOut zOut =
@@ -127,9 +129,10 @@ vgettempname _ nOut zOut =
 vfullpathname :: XFullPathname
 vfullpathname _ zName nOut zOut =
  do name <- peekCString zName
+    fullname <- canonicalizePath name
     putStrLn ("FullPathname: " ++ name)
-    if length name <= fromIntegral nOut
-      then do pokeCString zOut name
+    if genericLength fullname <= nOut
+      then do pokeCString zOut fullname
               return sQLITE_OK
       else return sQLITE_ERROR
 
@@ -169,8 +172,9 @@ pokeCString :: Ptr CChar -> String -> IO ()
 pokeCString ptr xs = pokeArray0 0 ptr (map (toEnum . fromEnum) xs)
 
 init_my_file :: CString -> IO MySqliteFile
-init_my_file zName = return MySqliteFile `ap` init_file `ap` return zName
+init_my_file zName = return MySqliteFile `ap` init_file `ap` return zName `ap` return nullPtr
 
+init_file :: IO SqliteFile
 init_file = SqliteFile `fmap` (new =<< init_io_methods)
 
 init_io_methods :: IO SqliteIoMethods
@@ -189,6 +193,7 @@ init_io_methods =
     `ap` mkXSectorSize vsectorsize
     `ap` mkXDeviceCharacteristics vdevchar
 
+freeIoMethods :: Ptr SqliteIoMethods -> IO ()
 freeIoMethods ptr =
  do s <- peek ptr
     freeHaskellFunPtr (xClose s)
@@ -214,7 +219,8 @@ vclose ptr =
 getMyFilename :: Ptr MySqliteFile -> IO String
 getMyFilename ptr = peekCString . myFilename =<< peek ptr
 
-doRead ptr name fn 0 offset = return 0
+doRead :: Ptr Word8 -> String -> Int -> Int -> Int -> IO Int
+doRead _ _ _ 0 _ = return 0
 doRead ptr name fn amt offset = do
   let amt' = min (blockSize - offset) amt
   got <- (withBinaryFile (name ++ "/" ++ show fn) ReadMode $ \ h ->
@@ -241,7 +247,7 @@ doWrite ptr name fn amt offset = do
   allocaArray blockSize $ \ tempArray ->
    do (withBinaryFile (name ++ "/" ++ show fn) ReadMode $ \ h ->
          hGetBuf h (tempArray :: Ptr Word8) blockSize
-       ) `catch` \ e -> if isDoesNotExistError e then return 0 else ioError e
+       ) `catch` \ _ -> return 0
       withBinaryFile (name ++ "/" ++ show fn) WriteMode $ \ h ->
        do hPutBuf h tempArray offset
           hPutBuf h ptr amt'
@@ -294,16 +300,34 @@ vfilesize p pSize =
 
 vlock :: XLock
 vlock ptr flag =
-  do s <- (peekCString . myFilename) =<< peek ptr
+  do info <- peek ptr
+     s    <- peekCString (myFilename info)
      putStrLn ("lock: " ++ s ++ " " ++ showLock flag)
-     x <- getChar
-     return (if x == 'y' then sQLITE_OK else sQLITE_BUSY)
+     --x <- getChar
+     --return (if x == 'y' then sQLITE_OK else sQLITE_BUSY)
+     case () of
+       _ | flag == sQLITE_LOCK_SHARED -> get_shared 512 (mySharedlock info) >>= check
+         | flag == sQLITE_LOCK_RESERVED -> get_reserved (mySharedlock info) >>= check
+         | flag == sQLITE_LOCK_EXCLUSIVE -> get_exclusive >>= check
+         | otherwise -> return sQLITE_ERROR
+
+  where
+  check 0 = return sQLITE_OK
+  check (-1) = return sQLITE_ERROR --XXX: check for EBUSY
+
 
 vunlock :: XUnlock
 vunlock ptr flag =
-  do s <- (peekCString . myFilename) =<< peek ptr
+  do info <- peek ptr
+     s <- peekCString (myFilename info)
      putStrLn ("unlock: " ++ s ++ " " ++ showLock flag)
-     return sQLITE_OK
+     case () of
+      _ | flag == sQLITE_LOCK_NONE -> free_shared (mySharedlock info) >>= check
+        | flag == sQLITE_LOCK_SHARED -> free_exclusive 512 (mySharedlock info) >>= check
+        | otherwise -> return sQLITE_ERROR
+  where
+  check 0 = return sQLITE_OK
+  check (-1) = return sQLITE_ERROR
 
 -- note: could be combined
 showAccess x = checks !! fromIntegral x
