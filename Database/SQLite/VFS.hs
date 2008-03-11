@@ -32,6 +32,21 @@ foreign import ccall "sqlite3.h sqlite3_vfs_find" sqliteVfsFind ::
 foreign import ccall "sqlite3.h sqlite3_vfs_unregister" sqliteVfsUnregister ::
   Ptr SqliteVFS -> IO CInt
 
+foreign import ccall "little_locks.h get_shared"
+  get_shared :: CSize -> CString -> IO Int
+
+foreign import ccall "little_locks.h get_shared"
+  get_reserved :: CString -> IO Int
+
+foreign import ccall "little_locks.h get_shared"
+  get_exclusive :: IO Int
+
+foreign import ccall "little_locks.h get_shared"
+  free_exclusive :: CSize -> CString -> IO Int
+
+foreign import ccall "little_locks.h get_shared"
+  free_shared :: CString -> IO Int
+
 unregisterVFS name =
  do ptr <- withCString name sqliteVfsFind
     unless (ptr == nullPtr) $
