@@ -12,12 +12,24 @@ const char const *read_lock     = "read.lock";
 const char const *reserved_lock = "reserved.lock";
 const char const *shared_dir    = "shared";
 
+
+int check_res() {
+  int fd;
+  fd = open(reserved_lock,O_RDONLY);
+  if (fd != -1) {
+    close(fd);
+    return 1;
+  }
+  if (errno == ENOENT) return 0;
+  return -1;
+}
+
 static
 int get_lock(const char* name) {
   int fd;
   int retries;
   for (retries = RETRIES; retries > 0; --retries) {
-    fd = open(name,O_CREAT|O_EXCL,0666);
+    fd = open(name,O_WRONLY|O_CREAT|O_EXCL,0666);
     if (fd != -1) {
       close(fd);
       errno = 0;
