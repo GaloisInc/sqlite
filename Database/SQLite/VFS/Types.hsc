@@ -106,7 +106,7 @@ instance Storable SqliteVFS where
 data MySqliteFile = MySqliteFile
         { myBaseFile :: SqliteFile
         , myFilename :: CString
-        , myLockname :: CString
+        , mySharedlock :: CString
         }
 
 instance Storable MySqliteFile where
