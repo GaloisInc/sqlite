@@ -47,6 +47,9 @@ foreign import ccall "little_locks.h free_exclusive"
 foreign import ccall "little_locks.h free_shared"
   free_shared :: CString -> IO Int
 
+foreign import ccall "little_locks.h check_res"
+  check_res :: IO Int
+
 unregisterVFS :: String -> IO ()
 unregisterVFS name =
  do ptr <- withCString name sqliteVfsFind
@@ -303,8 +306,7 @@ vlock ptr flag =
   do info <- peek ptr
      s    <- peekCString (myFilename info)
      putStrLn ("lock: " ++ s ++ " " ++ showLock flag)
-     --x <- getChar
-     --return (if x == 'y' then sQLITE_OK else sQLITE_BUSY)
+     getLine
      case () of
        _ | flag == sQLITE_LOCK_SHARED -> get_shared 512 (mySharedlock info) >>= check
          | flag == sQLITE_LOCK_RESERVED -> get_reserved (mySharedlock info) >>= check
@@ -313,7 +315,7 @@ vlock ptr flag =
 
   where
   check 0 = return sQLITE_OK
-  check (-1) = return sQLITE_ERROR --XXX: check for EBUSY
+  check (-1) = putStrLn "fail in vlock" >> return sQLITE_ERROR --XXX: check for EBUSY
 
 
 vunlock :: XUnlock
@@ -327,7 +329,7 @@ vunlock ptr flag =
         | otherwise -> return sQLITE_ERROR
   where
   check 0 = return sQLITE_OK
-  check (-1) = return sQLITE_ERROR
+  check _ = return sQLITE_ERROR
 
 -- note: could be combined
 showAccess x = checks !! fromIntegral x
@@ -341,8 +343,8 @@ showLock x = locks !! fromIntegral x
 
 vcheckres :: XCheckReservedLock
 vcheckres _ = do putStrLn "check reserved?"
-                 x <- getChar
-                 return (x == 'y')
+                 rc <- check_res
+                 return (rc == 1)
 
 vfilecontrol :: XFileControl
 vfilecontrol _ op pArg = return sQLITE_OK

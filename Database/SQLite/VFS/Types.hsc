@@ -115,7 +115,7 @@ instance Storable MySqliteFile where
   peek ptr                      = return MySqliteFile
                                  `ap` (#peek my_sqlite3_file, base_file) ptr
                                  `ap` (#peek my_sqlite3_file, zFilename) ptr
-                                 `ap` (#peek my_sqlite3_file, zSharedlock) ptr
+                                 `ap` return ((#ptr my_sqlite3_file, zSharedlock) ptr)
   poke ptr s          = do (#poke my_sqlite3_file, base_file) ptr (myBaseFile s)
                            (#poke my_sqlite3_file, zFilename) ptr (myFilename s)
 

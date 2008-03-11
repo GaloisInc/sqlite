@@ -6,7 +6,7 @@
 
 // in microseconds
 #define SLEEP_TIME   500
-#define RETRIES      300000000
+#define RETRIES      10
 
 const char const *read_lock     = "read.lock";
 const char const *reserved_lock = "reserved.lock";
@@ -25,10 +25,9 @@ int check_res() {
 }
 
 static
-int get_lock(const char* name) {
+int get_lock(const char* name, int tries) {
   int fd;
-  int retries;
-  for (retries = RETRIES; retries > 0; --retries) {
+  for (; tries > 0; --tries) {
     fd = open(name,O_WRONLY|O_CREAT|O_EXCL,0666);
     if (fd != -1) {
       close(fd);
@@ -74,14 +73,16 @@ int shared_name(size_t n, char* buffer) {
 
 int get_shared(size_t n, char* buffer) {
   int res = -1;
-  if (get_lock(read_lock) != 0) return res;
+  printf("Get shared: \n");
+  if (get_lock(read_lock,RETRIES) != 0) return res;
   res = shared_name(n,buffer);
   res += unlink(read_lock);
+  printf("%s\n",buffer);
   return res;
 }
 
 int get_reserved(const char* name) {
-  if (get_lock(reserved_lock) != 0) return -1;
+  if (get_lock(reserved_lock,1) != 0) return -1;
   if (unlink(name) == 0) return 0;
   unlink(reserved_lock);
   return -1;
@@ -106,7 +107,7 @@ int is_empty_dir(const char* name) {
 int get_exclusive() {
   int retries;
 
-  if (get_lock(read_lock) != 0) return -1;
+  if (get_lock(read_lock,RETRIES) != 0) return -1;
 
   for (retries = RETRIES; retries > 0; --retries) {
     switch (is_empty_dir(shared_dir)) {

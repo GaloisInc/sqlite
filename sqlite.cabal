@@ -19,7 +19,7 @@ Ghc-options:     -O2 -Wall
 Cc-options:      -Wall
 Include-dirs:    include
 Includes:        sqlite3-local.h, sqlite3.h
-C-Sources:       cbits/sqlite3-local.c, cbits/sqlite3.c
+C-Sources:       cbits/sqlite3-local.c, cbits/sqlite3.c, cbits/little_locks.c
 -- Extra-Libraries: sqlite3
 -- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
 extra-source-files:
