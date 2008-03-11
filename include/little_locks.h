@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 
+int check_res();
 int get_shared(size_t n, char* buffer);
 int get_reserved(const char* name);
 int get_exclusive();
