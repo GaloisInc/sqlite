@@ -281,7 +281,8 @@ vlock :: XLock
 vlock ptr flag =
   do s <- (peekCString . myFilename) =<< peek ptr
      putStrLn ("lock: " ++ s ++ " " ++ showLock flag)
-     return sQLITE_OK
+     x <- getChar
+     return (if x == 'y' then sQLITE_OK else sQLITE_BUSY)
 
 vunlock :: XUnlock
 vunlock ptr flag =
@@ -300,7 +301,9 @@ showLock x = locks !! fromIntegral x
 
 
 vcheckres :: XCheckReservedLock
-vcheckres _ = return False
+vcheckres _ = do putStrLn "check reserved?"
+                 x <- getChar
+                 return (x == 'y')
 
 vfilecontrol :: XFileControl
 vfilecontrol _ op pArg = return sQLITE_OK
