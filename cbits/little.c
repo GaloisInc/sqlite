@@ -14,9 +14,10 @@ sqlite3_vfs little_vfs;
 sqlite3_io_methods little_methods;
 
 typedef struct {
-  const struct sqlite3_io_methods *pMethods;
+  struct sqlite3_file base_file;
   const char* name;
-  char shared_lock[LITTLE_MAX_PATH];
+  int dir_fd;
+  int shared_lock_number;
 } little_file;
 
 // XXX: check flags
@@ -27,9 +28,9 @@ int little_open(sqlite3_vfs *self, const char* zName,
   little_file *file = (little_file*)f;
 
   printf("open %s\n", zName);
-  file->pMethods  = &little_methods;
+  (file->base_file).pMethods  = &little_methods;
   file->name      = zName;      // is it OK to hold on the ptr here?
-  if (mkdir(zName) == -1 && errno != EEXIST) return SQLITE_CANTOPEN;
+  if (mkdir(zName,0666) == -1 && errno != EEXIST) return SQLITE_CANTOPEN;
   return SQLITE_OK;
 }
 
