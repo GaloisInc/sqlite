@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <string.h>
 
 #define LITTLE_MAX_PATH 512
 #define LITTLE_VERSION 1
@@ -56,18 +59,117 @@ int little_close(sqlite3_file *file) {
 }
 
 static
+int open_block(int dir_fd, char *name) {
+  int fd;
+  struct stat mystat;
+  void *buf;
+
+  fd = openat(dir_fd, name, O_RDWR | O_CREAT, 0666);
+  if (fd == -1) return -1;
+
+  if (fstat(fd,&mystat) == -1) {
+    close(fd);
+    return -1;
+  }
+
+  if (mystat.st_size == 0) {
+    ftruncate(fd,LITTLE_SECTOR_SIZE);
+  } else if (mystat.st_size != LITTLE_SECTOR_SIZE) {
+    close(fd);
+    return -1;
+  }
+
+  return fd;
+}
+
+static
 int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
+  int filenumber;
+  int fd;
+  int got = 0;
+  int littleAmt;
+  void *file_contents;
+  char namebuffer[10];
+
   little_file *self = (little_file*)file;
   printf("read %s, off: %ld, amt: %d\n", self->name, iOfst, iAmt);
-  // read stuff intp buf
+
+
+  for (filenumber = iOfst / LITTLE_SECTOR_SIZE,
+       iOfst -= filenumber * LITTLE_SECTOR_SIZE
+      ; iAmt > 0
+      ; ++filenumber) {
+
+    littleAmt = min(LITTLE_SECTOR_SIZE, iAmt - iOfst);
+
+    snprintf("%d", sizeof(namebuffer), namebuffer, filenumber);
+
+    fd = open_block(self->dir_fd, namebuffer);
+    if (fd == -1) {
+      return SQLITE_IOERR_READ;
+    }
+
+    file_contents = mmap(NULL, LITTLE_SECTOR_SIZE, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
+
+    if (file_contents == MAP_FAILED) {
+      close(fd);
+      return SQLITE_IOERR_READ;
+    }
+
+    memcpy(buf,file_contents + iOfst,littleAmt);
+
+    unmmap(file_contents, LITTLE_SECTOR_SIZE);
+    close(fd);
+
+    iAmt -= littleAmt;
+    buf  += littleAmt;
+    iOfst = 0;
+  }
   return SQLITE_OK;
 }
 
 static
 int little_write(sqlite3_file *file,
                   const void *buf, int iAmt, sqlite3_int64 iOfst) {
+  int filenumber;
+  int littleAmt;
+  int fd;
+  char namebuffer[10];
+  void*file_contents;
+
   little_file *self = (little_file*)file;
   printf("write %s, off: %ld, amt: %d\n", self->name, iOfst, iAmt);
+
+  for (filenumber = iOfst / LITTLE_SECTOR_SIZE,
+       iOfst -= filenumber * LITTLE_SECTOR_SIZE
+      ; iAmt > 0
+      ; ++filenumber) {
+
+    littleAmt = min(LITTLE_SECTOR_SIZE, iAmt - iOfst);
+
+    snprintf("%d", sizeof(namebuffer), namebuffer, filenumber);
+
+    fd = open_block(self->dir_fd, namebuffer);
+    if (fd == -1) {
+      return SQLITE_IOERR_WRITE;
+    }
+
+    file_contents = mmap(NULL, LITTLE_SECTOR_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
+
+    if (file_contents == MAP_FAILED) {
+      close(fd);
+      return SQLITE_IOERR_WRITE;
+    }
+
+    memcpy(file_contents + iOfst, buf, littleAmt);
+
+    unmmap(file_contents, LITTLE_SECTOR_SIZE);
+    close(fd);
+
+    iAmt -= littleAmt;
+    buf  += littleAmt;
+    iOfst = 0;
+  }
   return SQLITE_OK;
 }
 
