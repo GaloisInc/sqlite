@@ -33,22 +33,22 @@ foreign import ccall "sqlite3.h sqlite3_vfs_unregister" sqliteVfsUnregister ::
   Ptr SqliteVFS -> IO Status
 
 foreign import ccall "little_locks.h get_shared"
-  get_shared :: CSize -> CString -> IO Int
+  get_shared :: CString -> CSize -> CString -> IO Int
 
 foreign import ccall "little_locks.h get_reserved"
-  get_reserved :: CString -> IO Int
+  get_reserved :: CString -> CString -> IO Int
 
 foreign import ccall "little_locks.h get_exclusive"
-  get_exclusive :: IO Int
+  get_exclusive :: CString -> IO Int
 
 foreign import ccall "little_locks.h free_exclusive"
-  free_exclusive :: CSize -> CString -> IO Int
+  free_exclusive :: CString -> CSize -> CString -> IO Int
 
 foreign import ccall "little_locks.h free_shared"
-  free_shared :: CString -> IO Int
+  free_shared :: CString -> CString -> IO Int
 
 foreign import ccall "little_locks.h check_res"
-  check_res :: IO Int
+  check_res :: CString -> IO Int
 
 unregisterVFS :: String -> IO ()
 unregisterVFS name =
@@ -308,9 +308,9 @@ vlock ptr flag =
      putStrLn ("lock: " ++ s ++ " " ++ showLock flag)
      getLine
      case () of
-       _ | flag == sQLITE_LOCK_SHARED -> get_shared 512 (mySharedlock info) >>= check
-         | flag == sQLITE_LOCK_RESERVED -> get_reserved (mySharedlock info) >>= check
-         | flag == sQLITE_LOCK_EXCLUSIVE -> get_exclusive >>= check
+       _ | flag == sQLITE_LOCK_SHARED -> get_shared (myFilename info) 512 (mySharedlock info) >>= check
+         | flag == sQLITE_LOCK_RESERVED -> get_reserved (myFilename info) (mySharedlock info) >>= check
+         | flag == sQLITE_LOCK_EXCLUSIVE -> get_exclusive (myFilename info) >>= check
          | otherwise -> return sQLITE_ERROR
 
   where
@@ -324,8 +324,8 @@ vunlock ptr flag =
      s <- peekCString (myFilename info)
      putStrLn ("unlock: " ++ s ++ " " ++ showLock flag)
      case () of
-      _ | flag == sQLITE_LOCK_NONE -> free_shared (mySharedlock info) >>= check
-        | flag == sQLITE_LOCK_SHARED -> free_exclusive 512 (mySharedlock info) >>= check
+      _ | flag == sQLITE_LOCK_NONE -> free_shared (myFilename info) (mySharedlock info) >>= check
+        | flag == sQLITE_LOCK_SHARED -> free_exclusive (myFilename info) 512 (mySharedlock info) >>= check
         | otherwise -> return sQLITE_ERROR
   where
   check 0 = return sQLITE_OK
@@ -342,8 +342,9 @@ showLock x = locks !! fromIntegral x
 
 
 vcheckres :: XCheckReservedLock
-vcheckres _ = do putStrLn "check reserved?"
-                 rc <- check_res
+vcheckres p = do putStrLn "check reserved?"
+                 info <- peek p
+                 rc <- check_res (myFilename info)
                  return (rc == 1)
 
 vfilecontrol :: XFileControl
