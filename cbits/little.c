@@ -174,3 +174,11 @@ sqlite3_vfs* init_little_vfs(sqlite3_vfs *orig) {
 }
 
 
+int register_little_vfs(int makeDflt) {
+  struct sqlite3_vfs *un;
+  un = sqlite3_vfs_find("unix");
+  if (un == NULL) return -1;
+  sqlite3_vfs_register(init_little_vfs(un), makeDflt);
+  return 0;
+}
+
