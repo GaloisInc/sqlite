@@ -6,6 +6,7 @@ import Control.Monad
 import Data.List
 import Data.Time.Clock
 import Data.Time.LocalTime
+import Data.Char
 import Database.SQLite.VFS.Types
 import Foreign
 import Foreign.C
@@ -16,6 +17,8 @@ import System.IO
 import System.IO.Error
 
 import Database.SQLite.Types
+
+import Debug.Trace
 
 maxPathname :: CInt
 maxPathname = 512
@@ -33,22 +36,22 @@ foreign import ccall "sqlite3.h sqlite3_vfs_unregister" sqliteVfsUnregister ::
   Ptr SqliteVFS -> IO Status
 
 foreign import ccall "little_locks.h get_shared"
-  get_shared :: CString -> CSize -> CString -> IO Int
+  get_shared :: CString -> CSize -> CString -> IO CInt
 
 foreign import ccall "little_locks.h get_reserved"
-  get_reserved :: CString -> CString -> IO Int
+  get_reserved :: CString -> CString -> IO CInt
 
 foreign import ccall "little_locks.h get_exclusive"
-  get_exclusive :: CString -> IO Int
+  get_exclusive :: CString -> IO CInt
 
 foreign import ccall "little_locks.h free_exclusive"
-  free_exclusive :: CString -> CSize -> CString -> IO Int
+  free_exclusive :: CString -> CSize -> CString -> IO CInt
 
 foreign import ccall "little_locks.h free_shared"
-  free_shared :: CString -> CString -> IO Int
+  free_shared :: CString -> CString -> IO CInt
 
 foreign import ccall "little_locks.h check_res"
-  check_res :: CString -> IO Int
+  check_res :: CString -> IO CInt
 
 unregisterVFS :: String -> IO ()
 unregisterVFS name =
@@ -297,7 +300,8 @@ vfilesize :: XFileSize
 vfilesize p pSize =
  do name <- getMyFilename p
     putStrLn ("Filesize: " ++ name)
-    xs <- getDirectoryContents name `catch` \ _ -> return ["",""]
+    xs1 <- getDirectoryContents name `catch` \ _ -> return ["",""]
+    let xs = filter (all isDigit) xs1
     poke pSize (fromIntegral (blockSize * (length xs - 2)))
     return sQLITE_OK
 
@@ -308,14 +312,18 @@ vlock ptr flag =
      putStrLn ("lock: " ++ s ++ " " ++ showLock flag)
      getLine
      case () of
-       _ | flag == sQLITE_LOCK_SHARED -> get_shared (myFilename info) 512 (mySharedlock info) >>= check
-         | flag == sQLITE_LOCK_RESERVED -> get_reserved (myFilename info) (mySharedlock info) >>= check
-         | flag == sQLITE_LOCK_EXCLUSIVE -> get_exclusive (myFilename info) >>= check
+       _ | flag == sQLITE_LOCK_SHARED ->
+            fmap check $ get_shared (myFilename info) 512 (mySharedlock info)
+         | flag == sQLITE_LOCK_RESERVED ->
+            fmap check $ get_reserved (myFilename info) (mySharedlock info)
+         | flag == sQLITE_LOCK_EXCLUSIVE ->
+            fmap check $ get_exclusive (myFilename info)
          | otherwise -> return sQLITE_ERROR
 
   where
-  check 0 = return sQLITE_OK
-  check (-1) = putStrLn "fail in vlock" >> return sQLITE_ERROR --XXX: check for EBUSY
+  check 0 = sQLITE_OK
+  check e | Errno (negate e) == eBUSY = sQLITE_BUSY
+          | otherwise                 = sQLITE_ERROR
 
 
 vunlock :: XUnlock
