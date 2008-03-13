@@ -1,9 +1,13 @@
 #include "little.h"
+
+#define _ATFILE_SOURCE
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 
 const char const *read_lock     = "read.lock";
@@ -24,34 +28,40 @@ int in_dir(const char *path, const char* file, size_t n, char *buf) {
 // Returns 0 on success, -EAGAIN if we exhaused the retries,
 // or some other negative error.
 static int set_lock(const char *path, const char* file, int tries) {
-  char buffer[LITTLE_MAX_PATH];
-  int fd;
-  if (in_dir(path,file,LITTLE_MAX_PATH,buffer) != 0) return -EINVAL;
+  int res, dfd, fd;
+
+  dfd = open(path, O_RDONLY);
+  if (dfd == -1) return -errno;
 
   for (; tries > 0; --tries) {
-    fd = open(buffer,O_WRONLY|O_CREAT|O_EXCL,0666);
+    fd = openat(dfd,file,O_WRONLY|O_CREAT|O_EXCL,0666);
     if (fd != -1) {
       close(fd);
-      return 0;
+      res = 0;
+      break;
     }
-    if (errno == EEXIST) {
-      usleep(LITTLE_SLEEP_TIME);
-    } else {
-      return -errno;
+    if (errno != EEXIST) {
+      res = -errno;
+      break;
     }
+    usleep(LITTLE_SLEEP_TIME);
   }
-  return -EAGAIN;
+  close(dfd);
+  return res;
 }
 
 
 // Remove a file representing a lock.
 static int remove_lock(const char *path, const char *file) {
-  char buffer[LITTLE_MAX_PATH];
-  if (in_dir(path,file,LITTLE_MAX_PATH,buffer) != 0) return -EINVAL;
-  if (unlink(buffer) == -1) {
-    if (errno == ENOENT) return 0; else return -errno;
+  int res = 0, dfd;
+
+  dfd = open(path, O_RDONLY);
+  if (dfd == -1) return -errno;
+  if (unlinkat(dfd,file,0) == -1) {
+    res = (errno == ENOENT) ? 0 : -errno;
   }
-  return 0;
+  close(dfd);
+  return res;
 }
 
 
@@ -62,7 +72,7 @@ static int is_empty_dir(const char *path) {
   struct dirent *cur;
   dir = opendir(path);
   if (dir == NULL) return -errno;
-  while (cur = readdir(dir)) {
+  while ((cur = readdir(dir)) != NULL) {
     if (cur->d_type == DT_REG) {
       closedir(dir);
       return 0;
@@ -92,7 +102,7 @@ static int exists(const char *path) {
 // XXX: there may be problems with this
 static void shared_name(int x, int n, char* buffer) {
   int bytes;
-  bytes = snprintf(buffer,n,"%s/%lu.%u",shared_dir,getpid(), x);
+  bytes = snprintf(buffer,n,"%s/%d.%u",shared_dir,getpid(), x);
   if (bytes >= n) buffer[n-1] = 0;
 }
 
