@@ -51,12 +51,21 @@ int rmFullDir(const char *name) {
 static int little_open(sqlite3_vfs *self, const char* zName,
                 sqlite3_file *f, int nOut, int *zOut) {
 
+  int dfd;
+
   little_file *file = (little_file*)f;
 
   printf("open %s\n", zName);
   (file->base_file).pMethods  = &little_methods;
   file->name      = zName;      // is it OK to hold on the ptr here?
-  if (mkdir(zName,0666) == -1 && errno != EEXIST) return SQLITE_CANTOPEN;
+  if (mkdir(zName,0777) == -1 && errno != EEXIST) return SQLITE_CANTOPEN;
+
+  dfd = open(zName,O_RDONLY);
+  if (mkdirat(dfd,"shared",0777) == -1 && errno != EEXIST) {
+    close(dfd);
+    return SQLITE_CANTOPEN;
+  }
+  close(dfd);
   return SQLITE_OK;
 }
 
@@ -91,7 +100,13 @@ int read_block(const char* path, int block, void* buffer) {
   snprintf(name,sizeof(name),"%d", block);
   fd = openat(dfd,name,O_RDONLY);
   close(dfd);
-  if (fd == -1) return -errno;
+  if (fd == -1) {
+    if (errno == ENOENT) {
+      return 0;
+    } else {
+      return -errno;
+    }
+  }
   res = read(fd, buffer, LITTLE_SECTOR_SIZE);
   close(fd);
   if (res == -1) return -errno;
@@ -102,14 +117,14 @@ int write_block(const char* path, int block, const char* buffer) {
   int dfd, fd, res;
   char name[LITTLE_MAX_PATH];
   dfd = open(path,O_RDONLY);
-  if (dfd == -1) return -errno;
+  if (dfd == -1) { perror(NULL); return -errno;}
   snprintf(name,sizeof(name),"%d", block);
-  fd = openat(dfd,path,O_WRONLY|O_CREAT,0666);
+  fd = openat(dfd,name,O_WRONLY|O_CREAT,0666);
   close(dfd);
-  if (fd == -1) return -errno;
+  if (fd == -1) { perror(NULL); return -errno;}
   res = write(fd, buffer, LITTLE_SECTOR_SIZE);
   close(fd);
-  if (res == -1) return -errno;
+  if (res == -1) { perror(NULL); return -errno;}
   return res;
 }
 
@@ -128,14 +143,16 @@ int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
       ; iAmt > 0
       ; ++filenumber) {
 
-    littleAmt = min(LITTLE_SECTOR_SIZE, iAmt - iOfst);
+    littleAmt = min(LITTLE_SECTOR_SIZE - iOfst , iAmt);
     if (iOfst == 0 && littleAmt == LITTLE_SECTOR_SIZE) {
       got = read_block(self->name,filenumber,buf);
+      printf("   got: %d\n", got);
       if (got < 0) return SQLITE_IOERR_READ;
       if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
     } else {
       char buffer[LITTLE_SECTOR_SIZE];
       got = read_block(self->name,filenumber,buffer);
+      printf("   got: %d\n", got);
       if (got < 0) return SQLITE_IOERR_READ;
       if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
       memcpy(buf,buffer + iOfst,littleAmt);
@@ -161,16 +178,20 @@ int little_write(sqlite3_file *file,
       ; iAmt > 0
       ; ++filenumber) {
 
-    littleAmt = min(LITTLE_SECTOR_SIZE, iAmt - iOfst);
+    littleAmt = min(LITTLE_SECTOR_SIZE - iOfst, iAmt);
+      printf("   littleAmt: %d   offset: %d", littleAmt, iOfst);
     if (iOfst == 0 && littleAmt == LITTLE_SECTOR_SIZE) {
       got = write_block(self->name,filenumber,buf);
+      printf("   wgot1 %d:", got);
       if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
     } else {
       char buffer[LITTLE_SECTOR_SIZE];
       got = read_block(self->name,filenumber,buffer);
-      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
+      printf("   wgot2 %d:", got);
+      if (got < 0) return SQLITE_IOERR_WRITE;
       memcpy(buffer + iOfst,buf,littleAmt);
       got = write_block(self->name,filenumber,buffer);
+      printf("   wgot3 %d:", got);
       if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
     }
 
