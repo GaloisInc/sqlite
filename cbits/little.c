@@ -1,5 +1,6 @@
 #include "sqlite3.h"
 #include "little.h"
+#include "little_locks.h"
 
 #include <stdio.h>
 #include <dirent.h>
@@ -194,24 +195,44 @@ int little_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
 
 static
 int little_lock(sqlite3_file *file, int lock) {
+  int res;
   little_file *self = (little_file*)file;
+
   printf("lock %s %d\n", self->name, lock);
-/*
   switch (lock) {
     case SQLITE_LOCK_SHARED:
+      res = get_shared(self->name);
+      break;
+
     case SQLITE_LOCK_RESERVED:
+      res = get_reserved(self->name, self->shared_lock_number);
+      break;
+
     case SQLITE_LOCK_EXCLUSIVE:
+      res = get_exclusive(self->name);
+      break;
 
+    default: return SQLITE_ERROR;
   }
-*/
-
+  if (res == -EAGAIN) return SQLITE_BUSY;
+  if (res < 0) return SQLITE_ERROR;
+  self->shared_lock_number = res;
   return SQLITE_OK;
 }
 
 static
 int little_unlock(sqlite3_file *file, int lock) {
+  int res;
   little_file *self = (little_file*)file;
+
   printf("unlock %s %d\n", self->name, lock);
+  switch (lock) {
+    case SQLITE_LOCK_NONE:    res = free_shared(self->name); break;
+    case SQLITE_LOCK_SHARED:  res = free_exclusive(self->name); break;
+    default: return SQLITE_ERROR;
+  }
+  if (res < 0) return SQLITE_ERROR;
+  self->shared_lock_number = res;
   return SQLITE_OK;
 }
 

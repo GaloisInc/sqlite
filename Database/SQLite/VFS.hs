@@ -26,6 +26,10 @@ maxPathname = 512
 blockSize :: Int
 blockSize = 1024
 
+
+foreign import ccall "little.h register_little_vfs"
+  register_little_vfs :: CInt -> IO CInt
+
 foreign import ccall "sqlite3.h sqlite3_vfs_register" sqliteVfsRegister ::
   Ptr SqliteVFS -> Bool -> IO Status
 

@@ -3,12 +3,12 @@
 
 #include <unistd.h>
 
-int check_res();
-int get_shared(const char* path, size_t n, char* buffer);
-int get_reserved(const char* path, const char* name);
+int check_res(const char* path);
+int get_shared(const char* path);
+int get_reserved(const char* path, int shared);
 int get_exclusive(const char *path);
-int free_exclusive(const char *path, size_t n, char* buffer);
-int free_shared(const char* path, const char* name);
+int free_exclusive(const char *path);
+int free_shared(const char* path);
 
 #endif
 
