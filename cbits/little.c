@@ -1,3 +1,6 @@
+
+#define _ATFILE_SOURCE
+
 #include "sqlite3.h"
 #include "little.h"
 #include "little_locks.h"
@@ -36,7 +39,7 @@ int rmFullDir(const char *name) {
   fd = open(name, O_RDONLY);
   if (fd == -1) return -1;
 
-  while (cur = readdir(dir)) {
+  while ((cur = readdir(dir)) != NULL) {
     if (cur->d_type == DT_REG) {
       if (unlinkat(fd,cur->d_name,0) == -1) return -1;
     }
@@ -79,7 +82,7 @@ static int little_delete (sqlite3_vfs* self, const char *zName, int syncDir) {
 
 
 static int little_close(sqlite3_file *file) {
-  little_file *self = (little_file*)file;
+  // little_file *self = (little_file*)file;
   return SQLITE_OK;
 }
 
@@ -189,13 +192,13 @@ int little_write(sqlite3_file *file,
 
 static
 int little_truncate(sqlite3_file *file, sqlite3_int64 size) {
-  little_file *self = (little_file*)file;
+  // little_file *self = (little_file*)file;
   return SQLITE_OK;
 }
 
 static
 int little_sync(sqlite3_file *file, int flags) {
-  little_file *self = (little_file*)file;
+  // little_file *self = (little_file*)file;
   return SQLITE_OK;
 }
 

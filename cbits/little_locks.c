@@ -28,7 +28,7 @@ int in_dir(const char *path, const char* file, size_t n, char *buf) {
 // Returns 0 on success, -EAGAIN if we exhaused the retries,
 // or some other negative error.
 static int set_lock(const char *path, const char* file, int tries) {
-  int res, dfd, fd;
+  int res = -EAGAIN, dfd, fd;
 
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
