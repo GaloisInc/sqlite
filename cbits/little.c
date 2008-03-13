@@ -1,14 +1,12 @@
 #include "sqlite3.h"
+#include "little.h"
+
 #include <stdio.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <string.h>
-
-#define LITTLE_MAX_PATH 512
-#define LITTLE_VERSION 1
-#define LITTLE_SECTOR_SIZE 1024
 
 // XXX
 #define LITTLE_DEVICE_CHARACTERISTICS 0
@@ -19,13 +17,11 @@ sqlite3_io_methods little_methods;
 typedef struct {
   struct sqlite3_file base_file;
   const char* name;
-  int dir_fd;
   int shared_lock_number;
 } little_file;
 
 // XXX: check flags
-static
-int little_open(sqlite3_vfs *self, const char* zName,
+static int little_open(sqlite3_vfs *self, const char* zName,
                 sqlite3_file *f, int nOut, int *zOut) {
 
   little_file *file = (little_file*)f;
@@ -37,63 +33,64 @@ int little_open(sqlite3_vfs *self, const char* zName,
   return SQLITE_OK;
 }
 
-static
-int little_delete (sqlite3_vfs* self, const char *zName, int syncDir) {
+static int little_delete (sqlite3_vfs* self, const char *zName, int syncDir) {
   printf("delete %s\n", zName);
   // delete dir, etc
   return SQLITE_OK;
 }
 
-static
-int little_access(sqlite3_vfs* self, const char *zName, int flags) {
+static int little_access(sqlite3_vfs* self, const char *zName, int flags) {
   printf("access %s\n", zName);
   return SQLITE_OK;
 }
 
 
-static
-int little_close(sqlite3_file *file) {
+static int little_close(sqlite3_file *file) {
   little_file *self = (little_file*)file;
   printf("close %s\n", self->name);
   return SQLITE_OK;
 }
 
-static
-int open_block(int dir_fd, char *name) {
-  int fd;
-  struct stat mystat;
-  void *buf;
 
-  fd = openat(dir_fd, name, O_RDWR | O_CREAT, 0666);
-  if (fd == -1) return -1;
-
-  if (fstat(fd,&mystat) == -1) {
-    close(fd);
-    return -1;
-  }
-
-  if (mystat.st_size == 0) {
-    ftruncate(fd,LITTLE_SECTOR_SIZE);
-  } else if (mystat.st_size != LITTLE_SECTOR_SIZE) {
-    close(fd);
-    return -1;
-  }
-
-  return fd;
+int read_block(const char* path, int block, void* buffer) {
+  int dfd, fd, res;
+  char name[LITTLE_MAX_PATH];
+  dfd = open(path, O_RDONLY);
+  if (dfd == -1) return -errno;
+  snprintf(name,sizeof(name),"%d", block);
+  fd = openat(dfd,name,O_RDONLY);
+  close(dfd);
+  if (fd == -1) return -errno;
+  res = read(fd, buffer, LITTLE_SECTOR_SIZE);
+  close(fd);
+  if (res == -1) return -errno;
+  return res;
 }
+
+int write_block(const char* path, int block, const char* buffer) {
+  int dfd, fd, res;
+  char name[LITTLE_MAX_PATH];
+  dfd = open(path,O_RDONLY);
+  if (dfd == -1) return -errno;
+  snprintf(name,sizeof(name),"%d", block);
+  fd = openat(dfd,path,O_WRONLY|O_CREAT,0666);
+  close(dfd);
+  if (fd == -1) return -errno;
+  res = write(fd, buffer, LITTLE_SECTOR_SIZE);
+  close(fd);
+  if (res == -1) return -errno;
+  return res;
+}
+
 
 static
 int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
   int filenumber;
-  int fd;
   int got = 0;
   int littleAmt;
-  void *file_contents;
-  char namebuffer[10];
 
   little_file *self = (little_file*)file;
   printf("read %s, off: %ld, amt: %d\n", self->name, iOfst, iAmt);
-
 
   for (filenumber = iOfst / LITTLE_SECTOR_SIZE,
        iOfst -= filenumber * LITTLE_SECTOR_SIZE
@@ -101,25 +98,17 @@ int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
       ; ++filenumber) {
 
     littleAmt = min(LITTLE_SECTOR_SIZE, iAmt - iOfst);
-
-    snprintf("%d", sizeof(namebuffer), namebuffer, filenumber);
-
-    fd = open_block(self->dir_fd, namebuffer);
-    if (fd == -1) {
-      return SQLITE_IOERR_READ;
+    if (iOfst == 0 && littleAmt == LITTLE_SECTOR_SIZE) {
+      got = read_block(self->name,filenumber,buf);
+      if (got < 0) return SQLITE_IOERR_READ;
+      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
+    } else {
+      char buffer[LITTLE_SECTOR_SIZE];
+      got = read_block(self->name,filenumber,buffer);
+      if (got < 0) return SQLITE_IOERR_READ;
+      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
+      memcpy(buf,buffer + iOfst,littleAmt);
     }
-
-    file_contents = mmap(NULL, LITTLE_SECTOR_SIZE, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
-
-    if (file_contents == MAP_FAILED) {
-      close(fd);
-      return SQLITE_IOERR_READ;
-    }
-
-    memcpy(buf,file_contents + iOfst,littleAmt);
-
-    unmmap(file_contents, LITTLE_SECTOR_SIZE);
-    close(fd);
 
     iAmt -= littleAmt;
     buf  += littleAmt;
@@ -131,11 +120,7 @@ int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
 static
 int little_write(sqlite3_file *file,
                   const void *buf, int iAmt, sqlite3_int64 iOfst) {
-  int filenumber;
-  int littleAmt;
-  int fd;
-  char namebuffer[10];
-  void*file_contents;
+  int filenumber, littleAmt, got;
 
   little_file *self = (little_file*)file;
   printf("write %s, off: %ld, amt: %d\n", self->name, iOfst, iAmt);
@@ -146,30 +131,23 @@ int little_write(sqlite3_file *file,
       ; ++filenumber) {
 
     littleAmt = min(LITTLE_SECTOR_SIZE, iAmt - iOfst);
-
-    snprintf("%d", sizeof(namebuffer), namebuffer, filenumber);
-
-    fd = open_block(self->dir_fd, namebuffer);
-    if (fd == -1) {
-      return SQLITE_IOERR_WRITE;
+    if (iOfst == 0 && littleAmt == LITTLE_SECTOR_SIZE) {
+      got = write_block(self->name,filenumber,buf);
+      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
+    } else {
+      char buffer[LITTLE_SECTOR_SIZE];
+      got = read_block(self->name,filenumber,buffer);
+      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
+      memcpy(buffer + iOfst,buf,littleAmt);
+      got = write_block(self->name,filenumber,buffer);
+      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
     }
-
-    file_contents = mmap(NULL, LITTLE_SECTOR_SIZE, PROT_WRITE, MAP_SHARED, fd, 0);
-
-    if (file_contents == MAP_FAILED) {
-      close(fd);
-      return SQLITE_IOERR_WRITE;
-    }
-
-    memcpy(file_contents + iOfst, buf, littleAmt);
-
-    unmmap(file_contents, LITTLE_SECTOR_SIZE);
-    close(fd);
 
     iAmt -= littleAmt;
     buf  += littleAmt;
     iOfst = 0;
   }
+
   return SQLITE_OK;
 }
 
@@ -198,6 +176,15 @@ static
 int little_lock(sqlite3_file *file, int lock) {
   little_file *self = (little_file*)file;
   printf("lock %s %d\n", self->name, lock);
+/*
+  switch (lock) {
+    case SQLITE_LOCK_SHARED:
+    case SQLITE_LOCK_RESERVED:
+    case SQLITE_LOCK_EXCLUSIVE:
+
+  }
+*/
+
   return SQLITE_OK;
 }
 
