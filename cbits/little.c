@@ -279,7 +279,7 @@ int rmFullDir(const char *name) {
   dir = opendir(name);
   if (dir == NULL) -1;
 
-  fd = open(name,0);
+  fd = open(name, O_RDONLY);
   if (fd == -1) return -1;
 
   while (cur = readdir(dir)) {
