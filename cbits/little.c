@@ -2,6 +2,7 @@
 #include "little.h"
 
 #include <stdio.h>
+#include <dirent.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -35,7 +36,11 @@ static int little_open(sqlite3_vfs *self, const char* zName,
 
 static int little_delete (sqlite3_vfs* self, const char *zName, int syncDir) {
   printf("delete %s\n", zName);
-  // delete dir, etc
+  char buffer[LITTLE_MAX_PATH];
+  if (snprintf(buffer,sizeof(buffer),"%s/shared",zName) >= LITTLE_MAX_PATH)
+    return SQLITE_ERROR;
+  if (rmFullDir(buffer) == -1) return SQLITE_ERROR;
+  if (rmFullDir(zName) == -1) return SQLITE_ERROR;
   return SQLITE_OK;
 }
 
@@ -167,8 +172,23 @@ int little_sync(sqlite3_file *file, int flags) {
 
 static
 int little_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
+  DIR *dir;
+  struct dirent *cur;
+  sqlite3_int64 count = 0;
   little_file *self = (little_file*)file;
   printf("file_size %s\n", self->name);
+
+  dir = opendir(self->name);
+  if (dir == NULL) return SQLITE_ERROR;
+
+  while ( (cur = readdir(dir)) != NULL ) {
+    if (cur->d_type == DT_REG) {
+      count += LITTLE_SECTOR_SIZE;
+    }
+  }
+  closedir(dir);
+  *pSize = count;
+
   return SQLITE_OK;
 }
 
