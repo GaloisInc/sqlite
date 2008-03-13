@@ -84,10 +84,14 @@ static int is_empty_dir(const char *path) {
 
 
 // Check if a file exists.
-static int exists(const char *path) {
-  int fd;
-  fd = open(path,O_RDONLY);
-  if (fd != -1) {
+static int exists(const char *path, const char *file) {
+  int dfd, fd;
+  dfd = open(path,O_RDONLY);
+  if (dfd == -1) {
+    return -errno;
+  }
+  fd = openat(dfd, file, O_RDONLY);
+  if (fd > -1) {
     close(fd);
     return 1;
   }
@@ -95,7 +99,9 @@ static int exists(const char *path) {
   return -errno;
 }
 
-
+int check_res(const char *path) {
+  return exists(path, reserved_lock);
+}
 
 
 // Convert a shared lock id into a string.
