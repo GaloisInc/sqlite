@@ -271,3 +271,24 @@ int register_little_vfs(int makeDflt) {
   return 0;
 }
 
+int rmFullDir(const char *name) {
+  struct dirent *cur;
+  int fd;
+  DIR *dir;
+
+  dir = opendir(name);
+  if (dir == NULL) -1;
+
+  fd = open(name,0);
+  if (fd == -1) return -1;
+
+  while (cur = readdir(dir)) {
+    if (cur->d_type == DT_REG) {
+      if (unlinkat(fd,cur->d_name,0) == -1) return -1;
+    }
+  }
+
+  close(fd);
+  closedir(dir);
+  return rmdir(name);
+}
