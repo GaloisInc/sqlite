@@ -48,7 +48,9 @@ static int set_lock(const char *path, const char* file, int tries) {
 static int remove_lock(const char *path, const char *file) {
   char buffer[LITTLE_MAX_PATH];
   if (in_dir(path,file,LITTLE_MAX_PATH,buffer) != 0) return -EINVAL;
-  if (unlink(buffer) == -1) return -errno;
+  if (unlink(buffer) == -1) {
+    if (errno == ENOENT) return 0; else return -errno;
+  }
   return 0;
 }
 

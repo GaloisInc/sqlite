@@ -11,7 +11,9 @@
 #include <string.h>
 
 // XXX
-#define LITTLE_DEVICE_CHARACTERISTICS 0
+#define LITTLE_DEVICE_CHARACTERISTICS SQLITE_IOCAP_ATOMIC1K
+
+#define min(x,y) ( (x)<(y)?(x):(y) )
 
 sqlite3_vfs little_vfs;
 sqlite3_io_methods little_methods;
@@ -21,6 +23,29 @@ typedef struct {
   const char* name;
   int shared_lock_number;
 } little_file;
+
+
+int rmFullDir(const char *name) {
+  struct dirent *cur;
+  int fd;
+  DIR *dir;
+
+  dir = opendir(name);
+  if (dir == NULL) return -1;
+
+  fd = open(name, O_RDONLY);
+  if (fd == -1) return -1;
+
+  while (cur = readdir(dir)) {
+    if (cur->d_type == DT_REG) {
+      if (unlinkat(fd,cur->d_name,0) == -1) return -1;
+    }
+  }
+
+  close(fd);
+  closedir(dir);
+  return rmdir(name);
+}
 
 // XXX: check flags
 static int little_open(sqlite3_vfs *self, const char* zName,
@@ -310,26 +335,4 @@ int register_little_vfs(int makeDflt) {
   if (un == NULL) return -1;
   sqlite3_vfs_register(init_little_vfs(un), makeDflt);
   return 0;
-}
-
-int rmFullDir(const char *name) {
-  struct dirent *cur;
-  int fd;
-  DIR *dir;
-
-  dir = opendir(name);
-  if (dir == NULL) -1;
-
-  fd = open(name, O_RDONLY);
-  if (fd == -1) return -1;
-
-  while (cur = readdir(dir)) {
-    if (cur->d_type == DT_REG) {
-      if (unlinkat(fd,cur->d_name,0) == -1) return -1;
-    }
-  }
-
-  close(fd);
-  closedir(dir);
-  return rmdir(name);
 }

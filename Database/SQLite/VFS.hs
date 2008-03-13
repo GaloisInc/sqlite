@@ -30,6 +30,7 @@ blockSize = 1024
 foreign import ccall "little.h register_little_vfs"
   register_little_vfs :: CInt -> IO CInt
 
+{-
 foreign import ccall "sqlite3.h sqlite3_vfs_register" sqliteVfsRegister ::
   Ptr SqliteVFS -> Bool -> IO Status
 
@@ -367,3 +368,4 @@ vsectorsize _ = return (fromIntegral blockSize)
 
 vdevchar :: XDeviceCharacteristics
 vdevchar _ = return sQLITE_IOCAP_ATOMIC1K
+-}
