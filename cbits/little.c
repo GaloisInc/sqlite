@@ -261,9 +261,9 @@ int little_lock(sqlite3_file *file, int lock) {
 
     case SQLITE_LOCK_EXCLUSIVE:
       res = get_exclusive(self->name);
-      if (res == 0) {
-        res = get_version(self->name, &(self->version));
-      }
+      // XXX: check if getting the version failed.
+      get_version(self->name, &(self->version));
+      ++(self->version);
       break;
 
     default: return SQLITE_ERROR;
