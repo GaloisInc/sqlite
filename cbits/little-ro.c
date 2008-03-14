@@ -30,35 +30,15 @@ typedef struct {
 static int little_ro_open(sqlite3_vfs *self, const char* zName,
                 sqlite3_file *f, int nOut, int *zOut) {
 
-  int dfd,fd;
-  size_t bytes;
   little_ro_file *file = (little_ro_file*)f;
 
-  dfd = open(zName,O_RDONLY);
-  if (dfd == -1) return SQLITE_CANTOPEN;
-  fd = openat(dfd,version_file,O_RDONLY);
-  close(dfd);
-  if (fd == -1) return SQLITE_CANTOPEN;
-  bytes = read(fd,&(file->version),sizeof(version_t));
-  close(fd);
-  if (bytes != sizeof(version_t)) return SQLITE_CANTOPEN;
-  file->version = DECODE_VERSION(file->version);
+  if (get_version(zName, &(file->version)) != 0) {
+    return SQLITE_CANTOPEN;
+  }
   file->base_file.pMethods = &little_ro_methods;
   file->name = zName;
   return SQLITE_OK;
 }
-
-// XXX
-/*
-static int little_ro_access(sqlite3_vfs* self, const char *zName, int flags) {
-  switch (flags) {
-    case SQLITE_ACCESS_EXISTS:    return 0;   // XXX
-    case SQLITE_ACCESS_READ:      return 1;   // XXX
-    case SQLITE_ACCESS_READWRITE: return 0;
-  }
-  return SQLITE_ERROR;   // ?
-}
-*/
 
 static int little_ro_delete (sqlite3_vfs* self, const char *zName, int syncDir){
   return SQLITE_ERROR;

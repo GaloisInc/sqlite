@@ -62,28 +62,6 @@ void set_version(little_file *self) {
   close(fd);
 }
 
-int get_version(little_file *self) {
-  int dfd, fd, err;
-
-  dfd = open(self->name, O_RDONLY);
-  fd = openat(dfd, version_file, O_RDONLY);
-  err = errno;
-  close(dfd);
-  if (fd == -1) {
-    if (err == ENOENT) {
-      self->version = 0;
-    } else {
-      return -err;
-    }
-  } else {
-    read(fd,&(self->version), sizeof(version_t));
-    self->version = DECODE_VERSION(self->version);
-    close(fd);
-  }
-  (self->version)++;
-  return 0;
-}
-
 // XXX: check flags
 static int little_open(sqlite3_vfs *self, const char* zName,
                 sqlite3_file *f, int nOut, int *zOut) {
@@ -283,7 +261,9 @@ int little_lock(sqlite3_file *file, int lock) {
 
     case SQLITE_LOCK_EXCLUSIVE:
       res = get_exclusive(self->name);
-      get_version(self);
+      if (res == 0) {
+        res = get_version(self->name, &(self->version));
+      }
       break;
 
     default: return SQLITE_ERROR;
