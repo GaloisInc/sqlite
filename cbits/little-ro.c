@@ -13,27 +13,17 @@
 #include <fcntl.h>
 #include <string.h>
 
-// XXX
-#define LITTLE_RO_DEVICE_CHARACTERISTICS SQLITE_IOCAP_ATOMIC1K
-#define LITTLE_RO_SECTOR_SIZE 1024
-#define LITTLE_RO_VERSION 1
-
 #define min(x,y) ( (x)<(y)?(x):(y) )
 
-#define DECODE_VERSION(x) x
 
 sqlite3_vfs little_ro_vfs;
 sqlite3_io_methods little_ro_methods;
 
-typedef sqlite3_int64 version;
-
 typedef struct {
   struct sqlite3_file base_file;
   const char* name;
-  version version;
+  version_t version;
 } little_ro_file;
-
-const char *version_file = "version";
 
 
 // XXX: check flags
@@ -49,22 +39,26 @@ static int little_ro_open(sqlite3_vfs *self, const char* zName,
   fd = openat(dfd,version_file,O_RDONLY);
   close(dfd);
   if (fd == -1) return SQLITE_CANTOPEN;
-  bytes = read(fd,&(file->version),sizeof(version));
+  bytes = read(fd,&(file->version),sizeof(version_t));
   close(fd);
-  if (bytes != sizeof(version)) return SQLITE_CANTOPEN;
+  if (bytes != sizeof(version_t)) return SQLITE_CANTOPEN;
   file->version = DECODE_VERSION(file->version);
+  file->base_file.pMethods = &little_ro_methods;
+  file->name = zName;
   return SQLITE_OK;
 }
 
 // XXX
+/*
 static int little_ro_access(sqlite3_vfs* self, const char *zName, int flags) {
   switch (flags) {
     case SQLITE_ACCESS_EXISTS:    return 0;   // XXX
-    case SQLITE_ACCESS_READ:      return 0;   // XXX
+    case SQLITE_ACCESS_READ:      return 1;   // XXX
     case SQLITE_ACCESS_READWRITE: return 0;
   }
   return SQLITE_ERROR;   // ?
 }
+*/
 
 static int little_ro_delete (sqlite3_vfs* self, const char *zName, int syncDir){
   return SQLITE_ERROR;
@@ -77,10 +71,10 @@ static int little_ro_close(sqlite3_file *file) {
 }
 
 
-int read_block(const char* path, int block, version ver, void* buffer) {
+static int read_block(const char* path, int block, version_t ver, void* buffer) {
   int dfd, fd, res, err;
   char name[LITTLE_MAX_PATH];
-  version cur_ver;
+  version_t cur_ver;
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
   snprintf(name,sizeof(name),"%d", block);
@@ -94,8 +88,8 @@ int read_block(const char* path, int block, version ver, void* buffer) {
       return -err;
     }
   }
-  res = read(fd, &cur_ver, sizeof(version));
-  if (res < sizeof(version) || DECODE_VERSION(cur_ver) != ver) {
+  res = read(fd, &cur_ver, sizeof(version_t));
+  if (res < sizeof(version_t) || DECODE_VERSION(cur_ver) > ver) {
     close(fd);
     return -EIO;
   }
@@ -194,11 +188,11 @@ static int little_ro_file_control(sqlite3_file *file, int op, void *pArg) {
 }
 
 static int little_ro_sector_size(sqlite3_file *file) {
-  return LITTLE_RO_SECTOR_SIZE;
+  return LITTLE_SECTOR_SIZE;
 }
 
 static int little_ro_device_characteristics(sqlite3_file *file) {
-  return LITTLE_RO_DEVICE_CHARACTERISTICS;
+  return LITTLE_DEVICE_CHARACTERISTICS;
 }
 
 
@@ -212,7 +206,7 @@ sqlite3_vfs* init_little_ro_vfs(sqlite3_vfs *orig) {
   little_ro_vfs.pAppData       = 0;
   little_ro_vfs.xOpen          = little_ro_open;
   little_ro_vfs.xDelete        = little_ro_delete;
-  little_ro_vfs.xAccess        = little_ro_access;
+  little_ro_vfs.xAccess        = orig->xAccess;
   little_ro_vfs.xGetTempname   = orig->xGetTempname;
   little_ro_vfs.xFullPathname  = orig->xFullPathname;
   little_ro_vfs.xDlOpen        = orig->xDlOpen;
@@ -223,7 +217,7 @@ sqlite3_vfs* init_little_ro_vfs(sqlite3_vfs *orig) {
   little_ro_vfs.xSleep         = orig->xSleep;
   little_ro_vfs.xCurrentTime   = orig->xCurrentTime;
 
-  little_ro_methods.iVersion   = LITTLE_RO_VERSION;
+  little_ro_methods.iVersion   = 1;
   little_ro_methods.xClose     = little_ro_close;
   little_ro_methods.xRead      = little_ro_read;
   little_ro_methods.xWrite     = little_ro_write;

@@ -18,9 +18,6 @@
 
 #define min(x,y) ( (x)<(y)?(x):(y) )
 
-#define read_version(fd,p) read(fd, p, 8)
-#define write_version(fd,p) write(fd, p, 8)
-
 sqlite3_vfs little_vfs;
 sqlite3_io_methods little_methods;
 
@@ -54,11 +51,22 @@ int rmFullDir(const char *name) {
   return rmdir(name);
 }
 
+void set_version(little_file *self) {
+  int dfd, fd;
+  version_t version = ENCODE_VERSION(self->version);
+
+  dfd = open(self->name, O_RDONLY);
+  fd  = openat(dfd, version_file, O_WRONLY | O_CREAT, 0666);
+  close(dfd);
+  write(fd, &version, sizeof(version_t));
+  close(fd);
+}
+
 int get_version(little_file *self) {
   int dfd, fd, err;
 
   dfd = open(self->name, O_RDONLY);
-  fd = openat(dfd, "version", O_RDONLY);
+  fd = openat(dfd, version_file, O_RDONLY);
   err = errno;
   close(dfd);
   if (fd == -1) {
@@ -68,7 +76,8 @@ int get_version(little_file *self) {
       return -err;
     }
   } else {
-    read_version(fd,&(self->version));
+    read(fd,&(self->version), sizeof(version_t));
+    self->version = DECODE_VERSION(self->version);
     close(fd);
   }
   (self->version)++;
@@ -112,7 +121,7 @@ static int little_close(sqlite3_file *file) {
 }
 
 
-int read_block(const char* path, int block, void* buffer) {
+static int read_block(const char* path, int block, void* buffer) {
   int dfd, fd, res;
   char name[LITTLE_MAX_PATH];
   dfd = open(path, O_RDONLY);
@@ -127,7 +136,7 @@ int read_block(const char* path, int block, void* buffer) {
       return -errno;
     }
   }
-  res = lseek(fd, 8, SEEK_SET);
+  res = lseek(fd, sizeof(version_t), SEEK_SET);
   if (res != -1) {
     res = read(fd, buffer, LITTLE_SECTOR_SIZE);
   }
@@ -136,7 +145,7 @@ int read_block(const char* path, int block, void* buffer) {
   return res;
 }
 
-int write_block(const char* path, int block, const char* buffer, sqlite3_int64 version) {
+static int write_block(const char* path, int block, const char* buffer, version_t version) {
   int dfd, fd, res, err;
   char name[LITTLE_MAX_PATH];
   dfd = open(path,O_RDONLY);
@@ -145,7 +154,8 @@ int write_block(const char* path, int block, const char* buffer, sqlite3_int64 v
   fd = openat(dfd,name,O_WRONLY|O_CREAT,0666);
   close(dfd);
   if (fd == -1) { perror(NULL); return -errno;}
-  res = write_version(fd, &version);
+  version = ENCODE_VERSION(version);
+  res = write(fd, &version, sizeof(version_t));
   if (res == -1) {
     err=errno;
     close(fd);
@@ -286,17 +296,13 @@ int little_lock(sqlite3_file *file, int lock) {
 
 static
 int little_unlock(sqlite3_file *file, int lock) {
-  int res, fd, dfd;
+  int res;
   little_file *self = (little_file*)file;
 
   switch (lock) {
     case SQLITE_LOCK_NONE:    res = free_shared(self->name); break;
     case SQLITE_LOCK_SHARED:
-       dfd = open(self->name, O_RDONLY);
-       fd  = openat(dfd, "version", O_WRONLY | O_CREAT, 0666);
-       close(dfd);
-       res = write_version(fd, &(self->version));
-       close(fd);
+       set_version(self);
        res = free_exclusive(self->name);
        break;
     default: return SQLITE_ERROR;
@@ -349,7 +355,7 @@ sqlite3_vfs* init_little_vfs(sqlite3_vfs *orig) {
   little_vfs.xSleep         = orig->xSleep;
   little_vfs.xCurrentTime   = orig->xCurrentTime;
 
-  little_methods.iVersion   = LITTLE_VERSION;
+  little_methods.iVersion   = 1;
   little_methods.xClose     = little_close;
   little_methods.xRead      = little_read;
   little_methods.xWrite     = little_write;
