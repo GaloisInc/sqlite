@@ -6,7 +6,7 @@
 
 const char *version_file = "version";
 
-int get_version(const char *path, version_t *version) {
+int get_version(const char *path, version_t *version, int  *nextfreeblock) {
   int dfd, fd, err;
 
   dfd = open(path, O_RDONLY);
@@ -16,14 +16,20 @@ int get_version(const char *path, version_t *version) {
   if (fd == -1) {
     if (err == ENOENT) {
       *version = 0;
+      *nextfreeblock = 0;
       err = 0;
     }
     return -err;
   }
   if (read(fd,version, sizeof(version_t)) == sizeof(version_t)) {
     *version = DECODE_VERSION(*version);
-    close(fd);
-    return 0;
+
+    if (read(fd,nextfreeblock, sizeof(int)) == sizeof(int)) {
+      *nextfreeblock = DECODE_INT(*nextfreeblock);
+
+      close(fd);
+      return 0;
+    }
   }
   close(fd);
   return -1;

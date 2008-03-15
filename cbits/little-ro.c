@@ -23,6 +23,7 @@ typedef struct {
   struct sqlite3_file base_file;
   const char* name;
   version_t version;
+  int nextfreeblock;
 } little_ro_file;
 
 
@@ -32,7 +33,7 @@ static int little_ro_open(sqlite3_vfs *self, const char* zName,
 
   little_ro_file *file = (little_ro_file*)f;
 
-  if (get_version(zName, &(file->version)) != 0) {
+  if (get_version(zName, &(file->version), &(file->nextfreeblock)) != 0) {
     return SQLITE_CANTOPEN;
   }
   file->base_file.pMethods = &little_ro_methods;
@@ -135,6 +136,7 @@ int little_ro_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
   sqlite3_int64 count = 0;
   little_ro_file *self = (little_ro_file*)file;
 
+/*
   dir = opendir(self->name);
   if (dir == NULL) return SQLITE_ERROR;
 
@@ -144,6 +146,7 @@ int little_ro_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
     }
   }
   closedir(dir);
+*/ count = self->nextfreeblock * LITTLE_SECTOR_SIZE;
   *pSize = count;
 
   return SQLITE_OK;
