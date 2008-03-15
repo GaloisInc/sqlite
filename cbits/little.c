@@ -301,7 +301,7 @@ int little_lock(sqlite3_file *file, int lock) {
 
     case SQLITE_LOCK_EXCLUSIVE:
       res = get_exclusive(self->name);
-      (self->version)++;
+      ++(self->version);
       break;
 
     default: return SQLITE_ERROR;
