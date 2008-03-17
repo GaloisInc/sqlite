@@ -16,12 +16,12 @@ Build-depends:   base, pretty, utf8-string, bytestring, time, directory
 Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
                  TypeSynonymInstances
 Ghc-options:     -O2 -Wall
-Cc-options:      -Wall -g
+Cc-options:      -Wall
 Include-dirs:    include
-Includes:        sqlite3-local.h, sqlite3.h
-C-Sources:       cbits/sqlite3-local.c, cbits/sqlite3.c,
-                 cbits/little_locks.c, cbits/little.c, cbits/little-ro.c, cbits/little-common.c
--- Extra-Libraries: sqlite3
+Includes:        sqlite3-local.h
+C-Sources:       cbits/sqlite3-local.c
+
+Extra-Libraries: sqlite3
 -- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
 extra-source-files:
     README configure
@@ -39,5 +39,3 @@ Exposed-modules:
     Database.SQLite.Types,
     Database.SQL
     Database.SQL.Types
-    Database.SQLite.VFS
-    Database.SQLite.VFS.Types

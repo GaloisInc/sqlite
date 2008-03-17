@@ -1,0 +1,18 @@
+#!/bin/sh
+#
+#
+UNAME=uname
+case `${UNAME} -a` in
+  *MINGW* | *CYGWIN* )
+  	  echo "Windows platform... using .buildinfo.win32"
+  	  cp sqlite.buildinfo.win32 sqlite.buildinfo
+	  ;;
+  *)
+      # subst standard header path variables
+      if test -n "$CPPFLAGS" ; then
+          echo "Found CPPFLAGS in environment: '$CPPFLAGS'"
+          sed 's,@CPPFLAGS@,'"$CPPFLAGS"',g' < sqlite.buildinfo.unix > sqlite.buildinfo
+      fi
+	  ;;
+esac
+

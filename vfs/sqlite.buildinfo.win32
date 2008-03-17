@@ -1,0 +1,3 @@
+-- Should you have a custom include path for sqlite, edit the next two lines:
+Ghc-options: -optc-Ic:/src/sqlite-3.5.1 
+Cc-options:  -Ic:/src/sqlite-3.5.1

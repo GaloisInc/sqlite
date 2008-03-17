@@ -1,0 +1,3 @@
+-- Should you have a custom include path for sqlite, edit the next two lines:
+Ghc-options: -optc@CPPFLAGS@
+Cc-options:  @CPPFLAGS@
