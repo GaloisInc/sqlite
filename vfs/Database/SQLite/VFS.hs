@@ -1,7 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Database.SQLite.VFS where
 
-import Foreign.C
 import Database.SQLite.Types
 
 foreign import ccall "little.h register_little_vfs"

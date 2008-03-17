@@ -8,32 +8,48 @@ License:         BSD3
 License-file:    LICENSE
 Author:          Galois Inc
 Author:          docserver-devel-team@galois.com
-Copyright: 
+Copyright:
   Copyright (c) 2007-8, Galois Inc
   Copyright (c) 2007, sof
 Category:        Database
-Build-depends:   base, pretty, utf8-string, bytestring, time, directory
-Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
-                 TypeSynonymInstances
-Ghc-options:     -O2 -Wall
-Cc-options:      -Wall
-Include-dirs:    include
-Includes:        sqlite3-local.h
-C-Sources:       cbits/sqlite3-local.c
+cabal-version: >= 1.2
 
-Extra-Libraries: sqlite3
--- Cheating here, including the tests/ .cabal + files in the parent (so as to dist them as one.)
+
+-- Cheating here, including the tests/ .cabal +
+-- files in the parent (so as to dist them as one.)
 extra-source-files:
-    README configure
-    include/sqlite3-local.h
-    sqlite.buildinfo.unix sqlite.buildinfo.win32
-    tests/configure tests/Main.hs tests/Setup.hs
-    tests/sqlite-tests.cabal
-    tests/test.db tests/sqlite-tests.buildinfo.unix
-    tests/sqlite-tests.buildinfo.win32
+  README configure
+  include/sqlite3-local.h
+  sqlite.buildinfo.unix sqlite.buildinfo.win32
+  tests/configure tests/Main.hs tests/Setup.hs
+  tests/sqlite-tests.cabal
+  tests/test.db tests/sqlite-tests.buildinfo.unix
+  tests/sqlite-tests.buildinfo.win32
 extra-tmp-files:
-    sqlite.buildinfo
-Exposed-modules:
+  sqlite.buildinfo
+
+flag builtin-sqlite3
+  default: False
+  description: Compile sqlite3 as a part of the library.
+
+library
+  Build-depends:   base, pretty, utf8-string, bytestring, time, directory
+  Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
+                   TypeSynonymInstances
+  Ghc-options:     -O2 -Wall
+  Cc-options:      -Wall
+  Include-dirs:    include
+  Includes:        sqlite3-local.h
+  C-Sources:       cbits/sqlite3-local.c
+
+  if flag(builtin-sqlite3)
+    Include-dirs:    sqlite3.5
+    Includes:        sqlite3.5
+    C-Sources:       sqlite3.5/sqlite3.c
+  else
+    Extra-Libraries: sqlite3
+
+  Exposed-modules:
     Database.SQLite,
     Database.SQLite.Base,
     Database.SQLite.Types,
