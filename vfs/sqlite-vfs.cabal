@@ -6,7 +6,7 @@ Author:          docserver-devel-team@galois.com
 Copyright:
   Copyright (c) 2007-8, Galois Inc
 category:        Database
-build-depends:   base
+build-depends:   base, sqlite
 extensions:      ForeignFunctionInterface
 ghc-options:     -O2 -Wall
 cc-options:      -Wall -g

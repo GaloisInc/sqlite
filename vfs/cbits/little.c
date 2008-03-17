@@ -15,8 +15,6 @@
 
 #define min(x,y) ( (x)<(y)?(x):(y) )
 
-static int read_block(const char* path, int block, void* buffer);
-
 sqlite3_vfs little_vfs;
 sqlite3_io_methods little_methods;
 
@@ -26,8 +24,13 @@ typedef struct {
   int shared_lock_number;
   version_t version;
   int nextfreeblock;
-  char zeroblock[LITTLE_SECTOR_SIZE];
+  int dirty;
+  int lastblock;
+  char lastbuffer[LITTLE_SECTOR_SIZE];
 } little_file;
+
+static int read_block(const char* path, int block, void* buffer);
+static int write_block(const char* path, int block, const char* buffer, version_t version);
 
 
 int rmFullDir(const char *name) {
@@ -87,6 +90,8 @@ static int little_open(sqlite3_vfs *self, const char* zName,
   close(dfd);
 
   get_version(file->name, &(file->version), &(file->nextfreeblock));
+  file->lastblock = -1;
+  file->dirty = 0;
   return SQLITE_OK;
 }
 
@@ -106,6 +111,28 @@ static int little_close(sqlite3_file *file) {
   return SQLITE_OK;
 }
 
+static int flush(little_file *self) {
+  if (self->dirty) {
+    write_block(self->name, self->lastblock, self->lastbuffer, self->version);
+    self->dirty = 0;
+  }
+  return 0;
+}
+
+static int cached_read(little_file *self, int block) {
+  int got;
+  if (self->lastblock == block) {
+    return LITTLE_SECTOR_SIZE;
+  }
+  flush(self);
+  got = read_block(self->name, block, self->lastbuffer);
+  if (got == LITTLE_MAX_PATH) {
+    self->lastblock = block;
+  } else {
+    self->lastblock = -1;
+  }
+  return got;
+}
 
 static int read_block(const char* path, int block, void* buffer) {
   int dfd, fd, res;
@@ -172,21 +199,9 @@ int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
 
     littleAmt = min(LITTLE_SECTOR_SIZE - iOfst , iAmt);
 
-    /*if (filenumber == 0 && self->nextfreeblock > 0) {
-        memcpy(buf,self->zeroblock + iOfst,littleAmt);
-    } else {*/
-      if (iOfst == 0 && littleAmt == LITTLE_SECTOR_SIZE) {
-        got = read_block(self->name,filenumber,buf);
-        if (got < 0) return SQLITE_IOERR_READ;
-        if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
-      } else {
-        char buffer[LITTLE_SECTOR_SIZE];
-        got = read_block(self->name,filenumber,buffer);
-        if (got < 0) return SQLITE_IOERR_READ;
-        if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
-        memcpy(buf,buffer + iOfst,littleAmt);
-      }
-    //}
+    got = cached_read(self,filenumber);
+    if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
+    memcpy(buf,self->lastbuffer + iOfst,littleAmt);
 
     iAmt -= littleAmt;
     buf  += littleAmt;
@@ -213,11 +228,11 @@ int little_write(sqlite3_file *file,
       if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
     } else {
       char buffer[LITTLE_SECTOR_SIZE];
-      got = read_block(self->name,filenumber,buffer);
+      got = cached_read(self,filenumber);
       if (got < 0) return SQLITE_IOERR_WRITE;
-      memcpy(buffer + iOfst,buf,littleAmt);
-      got = write_block(self->name,filenumber,buffer, self->version);
-      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
+      self->dirty = 1;
+      self->lastblock = filenumber;
+      memcpy(self->lastbuffer + iOfst,buf,littleAmt);
     }
 
     if (filenumber >= self->nextfreeblock) self->nextfreeblock = filenumber+1;
@@ -237,7 +252,9 @@ int little_truncate(sqlite3_file *file, sqlite3_int64 size) {
 
 static
 int little_sync(sqlite3_file *file, int flags) {
-  // little_file *self = (little_file*)file;
+  little_file *self = (little_file*)file;
+  printf("sync, name: %s, flags: %d\n", self->name, flags);
+  flush(self);
   return SQLITE_OK;
 }
 
@@ -320,7 +337,11 @@ int little_unlock(sqlite3_file *file, int lock) {
   printf("unlock, %s ...", locktypeName(lock));
 
   switch (lock) {
-    case SQLITE_LOCK_NONE:    res = free_shared(self->name); break;
+    case SQLITE_LOCK_NONE:
+       res = free_shared(self->name);
+       flush(self);
+       self->lastblock = -1;
+       break;
     case SQLITE_LOCK_SHARED:
        set_version(self);
        res = free_exclusive(self->name);

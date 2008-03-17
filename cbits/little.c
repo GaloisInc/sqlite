@@ -110,7 +110,7 @@ static int little_close(sqlite3_file *file) {
 static int read_block(const char* path, int block, void* buffer) {
   int dfd, fd, res;
   char name[LITTLE_MAX_PATH];
-  printf("read_block, path: %s, block: %d\n", path, block);
+  printf("%d ", block);
 
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
@@ -136,7 +136,7 @@ static int read_block(const char* path, int block, void* buffer) {
 static int write_block(const char* path, int block, const char* buffer, version_t version) {
   int dfd, fd, res, err;
   char name[LITTLE_MAX_PATH];
-  printf("write_block, path: %s, block: %d\n", path, block);
+  printf("%d ", block);
   dfd = open(path,O_RDONLY);
   if (dfd == -1) { perror(NULL); return -errno;}
   snprintf(name,sizeof(name),"%d", block);
@@ -164,6 +164,7 @@ int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
   int littleAmt;
 
   little_file *self = (little_file*)file;
+  printf("read, name: %s, amt: %d, off: %llu\n   ", self->name, iAmt, iOfst);
 
   for (filenumber = iOfst / LITTLE_SECTOR_SIZE,
        iOfst -= filenumber * LITTLE_SECTOR_SIZE
@@ -192,6 +193,7 @@ int little_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
     buf  += littleAmt;
     iOfst = 0;
   }
+  printf("\n");
   return SQLITE_OK;
 }
 
@@ -201,6 +203,7 @@ int little_write(sqlite3_file *file,
   int filenumber, littleAmt, got;
 
   little_file *self = (little_file*)file;
+  printf("write, name: %s, amt: %d, off: %llu\n   ", self->name, iAmt, iOfst);
 
   for (filenumber = iOfst / LITTLE_SECTOR_SIZE,
        iOfst -= filenumber * LITTLE_SECTOR_SIZE
@@ -226,6 +229,7 @@ int little_write(sqlite3_file *file,
     iOfst = 0;
   }
 
+  printf("\n");
   return SQLITE_OK;
 }
 
