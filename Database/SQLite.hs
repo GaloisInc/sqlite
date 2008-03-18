@@ -27,7 +27,6 @@ module Database.SQLite
 
        -- * Opening and closing a database
        , openConnection
-       , openConnection'
        , closeConnection
 
        -- * Executing SQL queries on the database
@@ -48,6 +47,7 @@ module Database.SQLite
        , RegexpHandler
        , withPrim
        , SQLiteHandle()
+       , newSQLiteHandle
        ) where
 
 import Database.SQLite.Types
@@ -66,7 +66,6 @@ import Data.Int
 import Data.Char ( isDigit )
 import Data.ByteString (ByteString, packCStringLen, useAsCStringLen)
 import Data.ByteString.Unsafe (unsafePackCStringLen)
-import Data.Bits((.|.))
 import Control.Monad ((<=<),when)
 import qualified Codec.Binary.UTF8.String as UTF8
 
@@ -96,27 +95,6 @@ openConnection dbName =
             newSQLiteHandle db
     _ -> fail ("openDatabase: failed to open " ++ show st)
 
-
-openConnection' :: FilePath
-                -> Maybe OpenFlags
-                -> Maybe String
-                -> IO SQLiteHandle
-openConnection' file mb_mode mb_vfs =
-  alloca $ \ptr ->
-  withCString file $ \fp ->
-  with_vfs $ \vfs ->
-  do let mode = case mb_mode of
-                  Nothing -> sQLITE_OPEN_READWRITE .|. sQLITE_OPEN_CREATE
-                  Just m  -> m
-     st <- sqlite3_open_v2 fp ptr mode vfs
-     case st of
-       0 -> newSQLiteHandle =<< peek ptr
-       _ -> fail ("openDatabase: failed to open " ++ show st)
-
-
-  where with_vfs f = case mb_vfs of
-                       Nothing -> f nullPtr
-                       Just x  -> withCString x f
 
 -- | Close a database connection.
 -- Destroys the SQLite value associated with a database, closes
