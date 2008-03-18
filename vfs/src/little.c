@@ -126,7 +126,7 @@ static int cached_read(little_file *self, int block) {
   }
   flush(self);
   got = read_block(self->name, block, self->lastbuffer);
-  if (got == LITTLE_MAX_PATH) {
+  if (got == LITTLE_SECTOR_SIZE) {
     self->lastblock = block;
   } else {
     self->lastblock = -1;
@@ -357,7 +357,9 @@ int little_unlock(sqlite3_file *file, int lock) {
 static
 int little_check_reserved_lock(sqlite3_file *file) {
   little_file *self = (little_file*)file;
-  return check_res(self->name);
+  int res = check_res(self->name);
+  printf("check reserved: %d\n", res);
+  return res;
 }
 
 static
