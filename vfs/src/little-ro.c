@@ -56,6 +56,7 @@ static int read_block(const char* path, int block, version_t ver, void* buffer) 
   int dfd, fd, res, err;
   char name[LITTLE_MAX_PATH];
   version_t cur_ver;
+  printf("RO: block %d, version %d\n", block, ver);
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
   snprintf(name,sizeof(name),"%d", block);
@@ -72,12 +73,14 @@ static int read_block(const char* path, int block, version_t ver, void* buffer) 
   res = read(fd, &cur_ver, sizeof(version_t));
   if (res < sizeof(version_t) || DECODE_VERSION(cur_ver) > ver) {
     close(fd);
+    printf("RO: version mismatch %d\n", DECODE_VERSION(cur_ver));
     return -EIO;
   }
   res = read(fd, buffer, LITTLE_SECTOR_SIZE);
   err = errno;
   close(fd);
   if (res == -1) return -err;
+  printf("RO: result %d\n", res);
   return res;
 }
 
@@ -89,6 +92,7 @@ static int little_ro_read(sqlite3_file *file,
   int littleAmt;
 
   little_ro_file *self = (little_ro_file*)file;
+  printf("RO %s %llu:%d\n", strstr(self->name,"journal") ? "J" : "D", iOfst, iAmt);
 
   for (filenumber = iOfst / LITTLE_SECTOR_SIZE,
        iOfst -= filenumber * LITTLE_SECTOR_SIZE
@@ -153,6 +157,12 @@ int little_ro_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
 }
 
 static int little_ro_lock(sqlite3_file *file, int lock) {
+  little_ro_file *self = (little_ro_file*)file;
+
+  if (lock == SQLITE_LOCK_SHARED)
+    if (get_version(self->name, &(self->version), &(self->nextfreeblock)) != 0)
+       return SQLITE_ERROR;
+
   return SQLITE_OK;
 }
 
