@@ -33,7 +33,9 @@ static int set_lock(const char *path, const char* file, int tries) {
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
 
+  trace ("Get lock: %d %s", LITTLE_SLEEP_TIME, file);
   for (; tries > 0; --tries) {
+    trace(".");
     fd = openat(dfd,file,O_WRONLY|O_CREAT|O_EXCL,0666);
     if (fd != -1) {
       close(fd);
@@ -47,6 +49,7 @@ static int set_lock(const char *path, const char* file, int tries) {
     usleep(LITTLE_SLEEP_TIME);
   }
   close(dfd);
+  trace("\n");
   return res;
 }
 
