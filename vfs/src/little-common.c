@@ -17,8 +17,8 @@ int get_version(const char *path, version_t *version, int  *nextfreeblock) {
     if (err == ENOENT) {
       *version = 0;
       *nextfreeblock = 0;
-      err = 0;
     }
+    errno=err;
     return -err;
   }
   if (read(fd,version, sizeof(version_t)) == sizeof(version_t)) {

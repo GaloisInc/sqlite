@@ -6,6 +6,7 @@
 #include "little_locks.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <dirent.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -14,6 +15,7 @@
 #include <string.h>
 
 #define min(x,y) ( (x)<(y)?(x):(y) )
+#define max(x,y) ( (x)>(y)?(x):(y) )
 
 sqlite3_vfs little_vfs;
 sqlite3_io_methods little_methods;
@@ -68,6 +70,32 @@ void set_version(little_file *self) {
   close(fd);
 }
 
+static int recover(little_file *file) {
+  struct dirent *cur;
+  DIR *dir;
+
+  trace("recover!..");
+
+  file->nextfreeblock = 0;
+
+  dir = opendir(file->name);
+  if (dir == NULL) {
+    trace("no dir\n");
+    return -1;
+  }
+
+  while ((cur = readdir(dir)) != NULL) {
+    if (cur->d_type == DT_REG) {
+      int n = atoi(cur->d_name) + 1;
+      file->nextfreeblock = max(file->nextfreeblock, n);
+    }
+  }
+
+  closedir(dir);
+  trace("size: %d\n",file->nextfreeblock);
+  return 0;
+}
+
 // XXX: check flags
 static int little_open(sqlite3_vfs *self, const char* zName,
                 sqlite3_file *f, int nOut, int *zOut) {
@@ -89,9 +117,15 @@ static int little_open(sqlite3_vfs *self, const char* zName,
   }
   close(dfd);
 
-  get_version(file->name, &(file->version), &(file->nextfreeblock));
   file->lastblock = -1;
   file->dirty = 0;
+
+  if (0 != get_version(file->name, &(file->version), &(file->nextfreeblock))) {
+    if (errno == ENOENT) {
+      if (0 != recover(file))
+        return SQLITE_CANTOPEN;
+    }
+  }
   return SQLITE_OK;
 }
 
@@ -295,15 +329,16 @@ int little_lock(sqlite3_file *file, int lock) {
       res = get_shared(self->name);
       if (res == 0) {
         res = get_version(self->name, &(self->version), &(self->nextfreeblock));
+        if (errno == ENOENT) res = 0;
       }
       break;
 
     case SQLITE_LOCK_RESERVED:
-      res = get_reserved(self->name, self->shared_lock_number);
+      res = get_reserved(self->name);
       break;
 
     case SQLITE_LOCK_EXCLUSIVE:
-      res = get_exclusive(self->name);
+      res = get_exclusive(self->name, self->shared_lock_number);
       ++(self->version);
       break;
 
@@ -402,11 +437,13 @@ sqlite3_vfs* init_little_vfs(sqlite3_vfs *orig) {
   return &little_vfs;
 }
 
+int sqlite3_extension_init() {
+  return register_little_vfs(1);
+}
 
 int register_little_vfs(int makeDflt) {
   struct sqlite3_vfs *un;
   un = sqlite3_vfs_find("unix");
   if (un == NULL) return -1;
-  sqlite3_vfs_register(init_little_vfs(un), makeDflt);
-  return 0;
+  return sqlite3_vfs_register(init_little_vfs(un), makeDflt);
 }

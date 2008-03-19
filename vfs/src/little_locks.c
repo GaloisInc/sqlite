@@ -142,25 +142,22 @@ int get_shared(const char* path) {
 
 // Get the reserved lock.
 // Returns -EBUSY if the lock laredy existed.
-int get_reserved(const char* path, int shared) {
-  int res;
-  char buffer[LITTLE_MAX_PATH];
-  res = set_lock(path,reserved_lock,1);
-  if (res != 0) return res;
-  shared_name(shared, LITTLE_MAX_PATH, buffer);
-  remove_lock(path, buffer);    // XXX: hopefully this worked.
-  return 0;
+int get_reserved(const char* path) {
+  return set_lock(path,reserved_lock,1);
 }
 
 // Get the exclusive lock, waiting for all readers to finish.
-int get_exclusive(const char* path) {
+int get_exclusive(const char* path, int shared) {
   int retries, res;
   char buffer[LITTLE_MAX_PATH];
 
-  if (in_dir(path,shared_dir,LITTLE_MAX_PATH,buffer) != 0) return -EINVAL;
-
   res = set_lock(path, read_lock, LITTLE_RETRIES);
   if (res != 0) return res;
+
+  shared_name(shared, LITTLE_MAX_PATH, buffer);
+  remove_lock(path, buffer);    // XXX: hopefully this worked.
+
+  if (in_dir(path,shared_dir,LITTLE_MAX_PATH,buffer) != 0) return -EINVAL;
 
   for (retries = LITTLE_RETRIES; retries > 0; --retries) {
     res = is_empty_dir(buffer);
