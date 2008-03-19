@@ -31,7 +31,7 @@ typedef struct {
   char lastbuffer[LITTLE_SECTOR_SIZE];
 } little_file;
 
-static int read_block(const char* path, int block, void* buffer);
+static int read_block(const char* path, int block, void* buffer, version_t version);
 static int write_block(const char* path, int block, const char* buffer, version_t version);
 
 
@@ -159,7 +159,7 @@ static int cached_read(little_file *self, int block) {
     return LITTLE_SECTOR_SIZE;
   }
   flush(self);
-  got = read_block(self->name, block, self->lastbuffer);
+  got = read_block(self->name, block, self->lastbuffer, self->version);
   if (got == LITTLE_SECTOR_SIZE) {
     self->lastblock = block;
   } else {
@@ -168,10 +168,11 @@ static int cached_read(little_file *self, int block) {
   return got;
 }
 
-static int read_block(const char* path, int block, void* buffer) {
+static int read_block(const char* path, int block, void* buffer, version_t ver) {
   int dfd, fd, res;
   char name[LITTLE_MAX_PATH];
-  trace("read_block, path: %s, block: %d\n", path, block);
+  version_t cur_ver;
+  trace("read_block, path: %s, block: %d, version: %llu\n", path, block, ver);
 
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
@@ -185,10 +186,13 @@ static int read_block(const char* path, int block, void* buffer) {
       return -errno;
     }
   }
-  res = lseek(fd, sizeof(version_t), SEEK_SET);
-  if (res != -1) {
-    res = read(fd, buffer, LITTLE_SECTOR_SIZE);
+  res = read(fd, &cur_ver, sizeof(version_t));
+  if (res < sizeof(version_t) || DECODE_VERSION(cur_ver) > ver) {
+    close(fd);
+    trace("RW: version mismatch %llu\n", DECODE_VERSION(cur_ver));
+    return -EIO;
   }
+  res = read(fd, buffer, LITTLE_SECTOR_SIZE);
   close(fd);
   if (res == -1) return -errno;
   return res;
@@ -327,10 +331,10 @@ int little_lock(sqlite3_file *file, int lock) {
   switch (lock) {
     case SQLITE_LOCK_SHARED:
       res = get_shared(self->name);
-      if (res == 0) {
-        res = get_version(self->name, &(self->version), &(self->nextfreeblock));
-        if (errno == ENOENT) res = 0;
-      }
+      if (res != 0) trace ("Optimistic locking! forge ahead\n");
+      // don't worry if we don't get the lock, we have versioning
+      res = get_version(self->name, &(self->version), &(self->nextfreeblock));
+      if (errno == ENOENT) res = 0;
       break;
 
     case SQLITE_LOCK_RESERVED:
