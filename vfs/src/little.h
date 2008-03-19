@@ -15,6 +15,8 @@
 #define DECODE_INT(x) x
 #define ENCODE_INT(x) x
 
+#define trace(args...) fprintf(stderr,args)
+
 typedef sqlite3_int64 version_t;
 
 int register_little_vfs(int makeDflt);

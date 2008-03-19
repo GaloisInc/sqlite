@@ -74,7 +74,7 @@ static int little_open(sqlite3_vfs *self, const char* zName,
 
   int dfd;
 
-  printf("open, name: %s\n", zName);
+  trace("open, name: %s\n", zName);
 
   little_file *file = (little_file*)f;
 
@@ -97,7 +97,7 @@ static int little_open(sqlite3_vfs *self, const char* zName,
 
 static int little_delete (sqlite3_vfs* self, const char *zName, int syncDir) {
   char buffer[LITTLE_MAX_PATH];
-  printf("delete, name: %s\n", zName);
+  trace("delete, name: %s\n", zName);
   if (snprintf(buffer,sizeof(buffer),"%s/shared",zName) >= LITTLE_MAX_PATH)
     return SQLITE_ERROR;
   if (rmFullDir(buffer) == -1) return SQLITE_ERROR;
@@ -137,7 +137,7 @@ static int cached_read(little_file *self, int block) {
 static int read_block(const char* path, int block, void* buffer) {
   int dfd, fd, res;
   char name[LITTLE_MAX_PATH];
-  printf("read_block, path: %s, block: %d\n", path, block);
+  trace("read_block, path: %s, block: %d\n", path, block);
 
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
@@ -163,7 +163,7 @@ static int read_block(const char* path, int block, void* buffer) {
 static int write_block(const char* path, int block, const char* buffer, version_t version) {
   int dfd, fd, res, err;
   char name[LITTLE_MAX_PATH];
-  printf("write_block, path: %s, block: %d\n", path, block);
+  trace("write_block, path: %s, block: %d\n", path, block);
   dfd = open(path,O_RDONLY);
   if (dfd == -1) { perror(NULL); return -errno;}
   snprintf(name,sizeof(name),"%d", block);
@@ -253,7 +253,7 @@ int little_truncate(sqlite3_file *file, sqlite3_int64 size) {
 static
 int little_sync(sqlite3_file *file, int flags) {
   little_file *self = (little_file*)file;
-  printf("sync, name: %s, flags: %d\n", self->name, flags);
+  trace("sync, name: %s, flags: %d\n", self->name, flags);
   flush(self);
   return SQLITE_OK;
 }
@@ -264,7 +264,7 @@ int little_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
   struct dirent *cur;
   sqlite3_int64 count = 0;
   little_file *self = (little_file*)file;
-  printf("filesize, name: %s ...", self->name);
+  trace("filesize, name: %s ...", self->name);
   fflush(stdout);
 
   /*
@@ -281,7 +281,7 @@ int little_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
   count = LITTLE_SECTOR_SIZE * self->nextfreeblock;
   *pSize = count;
 
-  printf(" %d\n", count);
+  trace(" %d\n", count);
 
   return SQLITE_OK;
 }
@@ -302,7 +302,7 @@ int little_lock(sqlite3_file *file, int lock) {
   int res;
   little_file *self = (little_file*)file;
 
-  printf("lock, %s ...", locktypeName(lock));
+  trace("lock, %s ...", locktypeName(lock));
   fflush(stdout);
   switch (lock) {
     case SQLITE_LOCK_SHARED:
@@ -326,7 +326,7 @@ int little_lock(sqlite3_file *file, int lock) {
   if (res == -EAGAIN) return SQLITE_BUSY;
   if (res < 0) return SQLITE_ERROR;
   self->shared_lock_number = res;
-  printf(" acquired\n");
+  trace(" acquired\n");
   return SQLITE_OK;
 }
 
@@ -334,7 +334,7 @@ static
 int little_unlock(sqlite3_file *file, int lock) {
   int res;
   little_file *self = (little_file*)file;
-  printf("unlock, %s ...", locktypeName(lock));
+  trace("unlock, %s ...", locktypeName(lock));
 
   switch (lock) {
     case SQLITE_LOCK_NONE:
@@ -350,7 +350,7 @@ int little_unlock(sqlite3_file *file, int lock) {
   }
   if (res < 0) return SQLITE_ERROR;
   self->shared_lock_number = res;
-  printf(" complete\n");
+  trace(" complete\n");
   return SQLITE_OK;
 }
 
@@ -358,7 +358,7 @@ static
 int little_check_reserved_lock(sqlite3_file *file) {
   little_file *self = (little_file*)file;
   int res = check_res(self->name);
-  printf("check reserved: %d\n", res);
+  trace("check reserved: %d\n", res);
   return res;
 }
 
