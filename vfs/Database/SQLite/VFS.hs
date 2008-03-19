@@ -3,7 +3,6 @@ module Database.SQLite.VFS where
 
 import Foreign
 import Foreign.C
-import Database.SQLite.Types
 import Database.SQLite
 import Data.Bits
 
