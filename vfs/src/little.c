@@ -227,7 +227,6 @@ int little_write(sqlite3_file *file,
       got = write_block(self->name,filenumber,buf, self->version);
       if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_WRITE;
     } else {
-      char buffer[LITTLE_SECTOR_SIZE];
       got = cached_read(self,filenumber);
       if (got < 0) return SQLITE_IOERR_WRITE;
       self->dirty = 1;
@@ -260,28 +259,15 @@ int little_sync(sqlite3_file *file, int flags) {
 
 static
 int little_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
-  DIR *dir;
-  struct dirent *cur;
   sqlite3_int64 count = 0;
   little_file *self = (little_file*)file;
   trace("filesize, name: %s ...", self->name);
   fflush(stdout);
 
-  /*
-  dir = opendir(self->name);
-  if (dir == NULL) return SQLITE_ERROR;
-
-  while ( (cur = readdir(dir)) != NULL ) {
-    if (cur->d_type == DT_REG) {
-      count += LITTLE_SECTOR_SIZE;
-    }
-  }
-  closedir(dir);
-  */
   count = LITTLE_SECTOR_SIZE * self->nextfreeblock;
   *pSize = count;
 
-  trace(" %d\n", count);
+  trace(" %llu\n", count);
 
   return SQLITE_OK;
 }

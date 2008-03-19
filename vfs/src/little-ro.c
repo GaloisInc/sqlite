@@ -56,7 +56,7 @@ static int read_block(const char* path, int block, version_t ver, void* buffer) 
   int dfd, fd, res, err;
   char name[LITTLE_MAX_PATH];
   version_t cur_ver;
-  trace("RO: block %d, version %d\n", block, ver);
+  trace("RO: block %d, version %llu\n", block, ver);
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
   snprintf(name,sizeof(name),"%d", block);
@@ -73,7 +73,7 @@ static int read_block(const char* path, int block, version_t ver, void* buffer) 
   res = read(fd, &cur_ver, sizeof(version_t));
   if (res < sizeof(version_t) || DECODE_VERSION(cur_ver) > ver) {
     close(fd);
-    trace("RO: version mismatch %d\n", DECODE_VERSION(cur_ver));
+    trace("RO: version mismatch %llu\n", DECODE_VERSION(cur_ver));
     return -EIO;
   }
   res = read(fd, buffer, LITTLE_SECTOR_SIZE);
@@ -135,22 +135,10 @@ static int little_ro_sync(sqlite3_file *file, int flags) {
 // XXX
 static
 int little_ro_file_size(sqlite3_file *file, sqlite3_int64 *pSize) {
-  DIR *dir;
-  struct dirent *cur;
   sqlite3_int64 count = 0;
   little_ro_file *self = (little_ro_file*)file;
 
-/*
-  dir = opendir(self->name);
-  if (dir == NULL) return SQLITE_ERROR;
-
-  while ( (cur = readdir(dir)) != NULL ) {
-    if (cur->d_type == DT_REG) {
-      count += LITTLE_SECTOR_SIZE;
-    }
-  }
-  closedir(dir);
-*/ count = self->nextfreeblock * LITTLE_SECTOR_SIZE;
+  count = self->nextfreeblock * LITTLE_SECTOR_SIZE;
   *pSize = count;
 
   return SQLITE_OK;
