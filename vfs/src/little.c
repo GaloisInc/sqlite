@@ -303,6 +303,8 @@ int little_lock(sqlite3_file *file, int lock) {
     case SQLITE_LOCK_SHARED:
       res = get_shared(self->name);
       if (res != 0) trace ("Optimistic locking! forge ahead\n");
+      else self->shared_lock_number = res;
+
       // don't worry if we don't get the lock, we have versioning
       res = get_version(self->name, &(self->version), &(self->nextfreeblock));
       if (errno == ENOENT) res = 0;
@@ -314,6 +316,7 @@ int little_lock(sqlite3_file *file, int lock) {
 
     case SQLITE_LOCK_EXCLUSIVE:
       res = get_exclusive(self->name, self->shared_lock_number);
+      self->shared_lock_number = -1;
       ++(self->version);
       break;
 
@@ -321,7 +324,6 @@ int little_lock(sqlite3_file *file, int lock) {
   }
   if (res == -EAGAIN) return SQLITE_BUSY;
   if (res < 0) return SQLITE_ERROR;
-  self->shared_lock_number = res;
   trace("LOCK UP %s OK\n", locktypeName(lock));
   return SQLITE_OK;
 }
