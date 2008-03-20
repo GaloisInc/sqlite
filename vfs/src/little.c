@@ -157,6 +157,11 @@ static int cached_read(little_file *self, int block) {
   if (self->lastblock == block) {
     return LITTLE_SECTOR_SIZE;
   }
+  if (block >= self->nextfreeblock) {
+    memset(self->lastbuffer, 0, LITTLE_SECTOR_SIZE);
+    self->lastblock = block;
+    return 0;
+  }
   flush(self);
   got = read_block(self->name, block, self->lastbuffer, self->version);
   if (got == LITTLE_SECTOR_SIZE) {
