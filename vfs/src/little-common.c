@@ -40,7 +40,7 @@ int read_block(const char* path, int block, void* buffer, version_t ver) {
   int dfd, fd, res;
   char name[LITTLE_MAX_PATH];
   version_t cur_ver;
-  trace("read_block, path: %s, block: %d, version: %llu\n", path, block, ver);
+  trace("R %d/%llu, %s\n", block, ver, path);
 
   dfd = open(path, O_RDONLY);
   if (dfd == -1) return -errno;
