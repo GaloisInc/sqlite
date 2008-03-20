@@ -140,7 +140,8 @@ static int little_delete (sqlite3_vfs* self, const char *zName, int syncDir) {
 
 
 static int little_close(sqlite3_file *file) {
-  // little_file *self = (little_file*)file;
+  little_file *self = (little_file*)file;
+  trace("CLOSE %s\n", self->name);
   return SQLITE_OK;
 }
 
@@ -328,18 +329,19 @@ int little_unlock(sqlite3_file *file, int lock) {
 
   switch (lock) {
     case SQLITE_LOCK_NONE:
-       res = free_shared(self->name);
+       free_shared(self->name, self->shared_lock_number);
        flush(self);
        self->lastblock = -1;
+       self->shared_lock_number = -1;
        break;
     case SQLITE_LOCK_SHARED:
        set_version(self);
        res = free_exclusive(self->name);
+       if (res < 0) return SQLITE_ERROR;
+       self->shared_lock_number = res;
        break;
     default: return SQLITE_ERROR;
   }
-  if (res < 0) return SQLITE_ERROR;
-  self->shared_lock_number = res;
   trace("LOCK DOWN %s OK\n", locktypeName(lock));
   return SQLITE_OK;
 }

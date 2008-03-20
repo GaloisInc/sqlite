@@ -8,7 +8,7 @@ int get_shared(const char* path);
 int get_reserved(const char* path);
 int get_exclusive(const char *path, int shared);
 int free_exclusive(const char *path);
-int free_shared(const char* path);
+int free_shared(const char* path, int shared);
 
 #endif
 
