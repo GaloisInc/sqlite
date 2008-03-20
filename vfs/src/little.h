@@ -22,6 +22,7 @@ typedef sqlite3_int64 version_t;
 int register_little_vfs(int makeDflt);
 int register_little_ro_vfs(int makeDflt);
 int get_version(const char *name, version_t *version, int *nextfreeblock);
+int read_block(const char* path, int block, void* buffer, version_t version);
 extern const char *version_file;
 
 #endif

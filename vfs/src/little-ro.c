@@ -24,6 +24,8 @@ typedef struct {
   const char* name;
   version_t version;
   int nextfreeblock;
+  int lastblock;
+  int lastbuffer[LITTLE_SECTOR_SIZE];
 } little_ro_file;
 
 
@@ -51,42 +53,23 @@ static int little_ro_close(sqlite3_file *file) {
   return SQLITE_OK;
 }
 
-
-static int read_block(const char* path, int block, version_t ver, void* buffer) {
-  int dfd, fd, res, err;
-  char name[LITTLE_MAX_PATH];
-  version_t cur_ver;
-  trace("RO: block %d, version %llu\n", block, ver);
-  dfd = open(path, O_RDONLY);
-  if (dfd == -1) return -errno;
-  snprintf(name,sizeof(name),"%d", block);
-  fd = openat(dfd,name,O_RDONLY);
-  err = errno;
-  close(dfd);
-  if (fd == -1) {
-    if (errno == ENOENT) {
-      return 0;   // XXX: hopefully it did not disappear on us...
-    } else {
-      return -err;
-    }
+static int cached_read(little_ro_file *self, int block) {
+  int got;
+  if (self->lastblock == block) {
+    return LITTLE_SECTOR_SIZE;
   }
-  res = read(fd, &cur_ver, sizeof(version_t));
-  if (res < sizeof(version_t) || DECODE_VERSION(cur_ver) > ver) {
-    close(fd);
-    trace("RO: version mismatch %llu\n", DECODE_VERSION(cur_ver));
-    return -EIO;
+  got = read_block(self->name, block, self->lastbuffer, self->version);
+  if (got == LITTLE_SECTOR_SIZE) {
+    self->lastblock = block;
+  } else {
+    self->lastblock = -1;
   }
-  res = read(fd, buffer, LITTLE_SECTOR_SIZE);
-  err = errno;
-  close(fd);
-  if (res == -1) return -err;
-  trace("RO: result %d\n", res);
-  return res;
+  return got;
 }
 
 
-static int little_ro_read(sqlite3_file *file,
-                            void *buf, int iAmt, sqlite3_int64 iOfst) {
+static
+int little_ro_read(sqlite3_file *file, void *buf, int iAmt, sqlite3_int64 iOfst) {
   int filenumber;
   int got = 0;
   int littleAmt;
@@ -100,17 +83,10 @@ static int little_ro_read(sqlite3_file *file,
       ; ++filenumber) {
 
     littleAmt = min(LITTLE_SECTOR_SIZE - iOfst , iAmt);
-    if (iOfst == 0 && littleAmt == LITTLE_SECTOR_SIZE) {
-      got = read_block(self->name,filenumber,self->version,buf);
-      if (got < 0) return SQLITE_IOERR_READ;
-      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
-    } else {
-      char buffer[LITTLE_SECTOR_SIZE];
-      got = read_block(self->name,filenumber,self->version,buffer);
-      if (got < 0) return SQLITE_IOERR_READ;
-      if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
-      memcpy(buf,buffer + iOfst,littleAmt);
-    }
+
+    got = cached_read(self,filenumber);
+    if (got < LITTLE_SECTOR_SIZE) return SQLITE_IOERR_SHORT_READ;
+    memcpy(buf,self->lastbuffer + iOfst,littleAmt);
 
     iAmt -= littleAmt;
     buf  += littleAmt;

@@ -31,7 +31,6 @@ typedef struct {
   char lastbuffer[LITTLE_SECTOR_SIZE];
 } little_file;
 
-static int read_block(const char* path, int block, void* buffer, version_t version);
 static int write_block(const char* path, int block, const char* buffer, version_t version);
 
 
@@ -166,36 +165,6 @@ static int cached_read(little_file *self, int block) {
     self->lastblock = -1;
   }
   return got;
-}
-
-static int read_block(const char* path, int block, void* buffer, version_t ver) {
-  int dfd, fd, res;
-  char name[LITTLE_MAX_PATH];
-  version_t cur_ver;
-  trace("read_block, path: %s, block: %d, version: %llu\n", path, block, ver);
-
-  dfd = open(path, O_RDONLY);
-  if (dfd == -1) return -errno;
-  snprintf(name,sizeof(name),"%d", block);
-  fd = openat(dfd,name,O_RDONLY);
-  close(dfd);
-  if (fd == -1) {
-    if (errno == ENOENT) {
-      return 0;
-    } else {
-      return -errno;
-    }
-  }
-  res = read(fd, &cur_ver, sizeof(version_t));
-  if (res < sizeof(version_t) || DECODE_VERSION(cur_ver) > ver) {
-    close(fd);
-    trace("RW: version mismatch %llu\n", DECODE_VERSION(cur_ver));
-    return -EIO;
-  }
-  res = read(fd, buffer, LITTLE_SECTOR_SIZE);
-  close(fd);
-  if (res == -1) return -errno;
-  return res;
 }
 
 static int write_block(const char* path, int block, const char* buffer, version_t version) {
