@@ -10,14 +10,15 @@ const char *version_file = "version";
 int get_version(const char *path, version_t *version, int  *nextfreeblock) {
   int dfd, fd, err;
 
+      *version = 0;
+      *nextfreeblock = 0;
+
   dfd = open(path, O_RDONLY);
   fd = openat(dfd, version_file, O_RDONLY);
   err = errno;
   close(dfd);
   if (fd == -1) {
     if (err == ENOENT) {
-      *version = 0;
-      *nextfreeblock = 0;
     }
     errno=err;
     return -err;
