@@ -125,8 +125,9 @@ static int new_shared_name(const char* path) {
   for (attempt = 0, res = -EAGAIN; res == -EAGAIN; ++attempt) {
     shared_name(attempt, LITTLE_MAX_PATH, buffer);
     res = set_lock(path,buffer,1);
+    if (res == 0) return attempt;
   }
-  return (res == 0) ? attempt : res;
+  return res;
 }
 
 

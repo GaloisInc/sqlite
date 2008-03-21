@@ -118,6 +118,7 @@ static int little_open(sqlite3_vfs *self, const char* zName,
 
   file->lastblock = -1;
   file->dirty = 0;
+  file->shared_lock_number = -1;
 
   if (0 != get_version(file->name, &(file->version), &(file->nextfreeblock))) {
     if (errno == ENOENT) {
@@ -300,7 +301,7 @@ int little_lock(sqlite3_file *file, int lock) {
   switch (lock) {
     case SQLITE_LOCK_SHARED:
       res = get_shared(self->name);
-      if (res != 0) trace ("Optimistic locking! forge ahead\n");
+      if (res < 0) trace ("Optimistic locking! forge ahead\n");
       else self->shared_lock_number = res;
 
       // don't worry if we don't get the lock, we have versioning
