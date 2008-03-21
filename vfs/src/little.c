@@ -190,6 +190,7 @@ static int write_block(const char* path, int block, const char* buffer, version_
     return -err;
   }
   res = write(fd, buffer, LITTLE_SECTOR_SIZE);
+  fsync(fd);
   close(fd);
   if (res == -1) { perror(NULL); return -errno;}
   return res;
@@ -263,9 +264,13 @@ int little_truncate(sqlite3_file *file, sqlite3_int64 size) {
 
 static
 int little_sync(sqlite3_file *file, int flags) {
+  int fd;
   little_file *self = (little_file*)file;
   trace("SYNC(%d) %s\n", flags, self->name);
   flush(self);
+  fd = open(self->name,O_RDONLY);
+  fsync(fd);
+  close(fd);
   return SQLITE_OK;
 }
 

@@ -3,8 +3,8 @@
 
 #include "sqlite3.h"
 
-#define LITTLE_SLEEP_TIME   5000
-#define LITTLE_RETRIES      100000
+#define LITTLE_SLEEP_TIME   50000
+#define LITTLE_RETRIES      1000000
 #define LITTLE_MAX_PATH     512
 #define LITTLE_SECTOR_SIZE  65536
 // XXX
