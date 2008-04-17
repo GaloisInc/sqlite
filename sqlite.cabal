@@ -7,13 +7,11 @@ Description:
 License:         BSD3
 License-file:    LICENSE
 Author:          Galois Inc
-Author:          docserver-devel-team@galois.com
+Maintainer:      Don Stewart
 Copyright:
   Copyright (c) 2007-8, Galois Inc
-  Copyright (c) 2007, sof
 Category:        Database
 cabal-version: >= 1.2
-
 
 -- Cheating here, including the tests/ .cabal +
 -- files in the parent (so as to dist them as one.)
@@ -36,7 +34,7 @@ library
   Build-depends:   base, pretty, utf8-string, bytestring, time, directory
   Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
                    TypeSynonymInstances
-  Ghc-options:     -O2 -Wall
+  Ghc-options:     -Wall
   Cc-options:      -Wall
   Include-dirs:    include
   Includes:        sqlite3-local.h
