@@ -12,7 +12,7 @@ Copyright:
   Copyright (c) 2007-8, Galois Inc
 Category:        Database
 cabal-version: >= 1.2
-build-type:      Simple
+build-type:      Configure
 
 -- Cheating here, including the tests/ .cabal +
 -- files in the parent (so as to dist them as one.)
