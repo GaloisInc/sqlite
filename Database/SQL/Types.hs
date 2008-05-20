@@ -75,6 +75,12 @@ data Table a
          , tabColumns     :: [Column a]
          , tabConstraints :: [Constraint]
          }
+ | VirtualTable
+         { tabName        :: String
+         , tabColumns     :: [Column a]
+         , tabConstraints :: [Constraint]
+         , tabUsing       :: String
+         }
 
 type SQLTable = Table SQLType
 
@@ -380,11 +386,20 @@ ppInsert (SQLInsertQuery table names select)
 ppCreate :: (a -> Doc) -> SQLCreate a -> Doc
 ppCreate _ (SQLCreateDB name) = text "CREATE DATABASE" <+> text name
 ppCreate ppType (SQLCreateTable t)
-  = text "CREATE TABLE" <+> text (tabName t)
+  = createTable (text (tabName t))
       <+> parens (vcat $ punctuate comma
                        $ map (ppColumn ppType) (tabColumns t) ++
                          map ppConstraint (tabConstraints t)
                  )
+   where
+   createTable n = case t of
+        Table{} -> text "CREATE TABLE" <+> n
+        VirtualTable{} -> hsep
+            [ text "CREATE VIRTUAL TABLE"
+            , n
+            , text "USING"
+            , text (tabUsing t)
+            ]
 
 ppColumn :: (a -> Doc) -> Column a -> Doc
 ppColumn ppType c = text (colName c)

@@ -115,9 +115,12 @@ defineTableOpt :: SQLiteHandle -> Bool -> SQLTable -> IO (Maybe String)
 defineTableOpt h check tab = execStatement_ h (createTable tab)
  where
   opt = if check then " IF NOT EXISTS " else ""
-  createTable t =
-    "CREATE TABLE " ++ opt ++ toSQLString (tabName t) ++
-    tupled (map toCols (tabColumns t)) ++ ";"
+  createTable t = case t of
+    Table{} -> "CREATE TABLE " ++ namePart ++ bodyPart
+    VirtualTable{} -> "CREATE VIRTUAL TABLE " ++ namePart ++ " USING " ++ tabUsing t ++ bodyPart
+    where
+    namePart = opt ++ toSQLString (tabName t)
+    bodyPart = tupled (map toCols (tabColumns t)) ++ ";"
 
   toCols col =
     toSQLString (colName col) ++ " " ++ showType (colType col) ++
