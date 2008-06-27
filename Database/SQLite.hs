@@ -123,7 +123,7 @@ defineTableOpt h check tab = execStatement_ h (createTable tab)
     bodyPart = tupled (map toCols (tabColumns t)) ++ ";"
 
   toCols col =
-    toSQLString (colName col) ++ " " ++ showType (colType col) ++
+    "`" ++ toSQLString (colName col) ++ "` " ++ showType (colType col) ++
     ' ':unwords (map showClause (colClauses col))
 
 
