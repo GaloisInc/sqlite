@@ -32,7 +32,8 @@ flag builtin-sqlite3
   description: Compile sqlite3 as a part of the library.
 
 library
-  Build-depends:   base, pretty, utf8-string, bytestring, time, directory
+  Build-depends:   base >= 3 && < 5, pretty, utf8-string, bytestring, time,
+                   directory
   Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
                    TypeSynonymInstances,
                    FlexibleInstances, UndecidableInstances, OverlappingInstances, IncoherentInstances
