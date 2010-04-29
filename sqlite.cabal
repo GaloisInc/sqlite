@@ -1,5 +1,5 @@
 Name:            sqlite
-Version:         0.4.2
+Version:         0.4.2.1
 Synopsis:        Haskell binding to sqlite3
 Description:
     Haskell binding to sqlite3 <http://sqlite.org/>.
@@ -7,7 +7,7 @@ Description:
 License:         BSD3
 License-file:    LICENSE
 Author:          Galois Inc
-Maintainer:      Don Stewart
+Maintainer:      Adam Wick <awick@uhsure.com>
 Copyright:
   Copyright (c) 2007-8, Galois Inc
 Category:        Database
@@ -44,7 +44,7 @@ library
 
   if flag(builtin-sqlite3)
     Include-dirs:    sqlite3.6
-    Includes:        sqlite3.6
+    Includes:        sqlite3.h
     C-Sources:       sqlite3.6/sqlite3.c
   else
     Extra-Libraries: sqlite3
@@ -55,3 +55,7 @@ library
     Database.SQLite.Types,
     Database.SQL
     Database.SQL.Types
+
+source-repository head
+  type:     git
+  location: git://code.galois.com/sqlite.git
