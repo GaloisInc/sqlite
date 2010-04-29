@@ -11,7 +11,7 @@ Maintainer:      Adam Wick <awick@uhsure.com>
 Copyright:
   Copyright (c) 2007-8, Galois Inc
 Category:        Database
-cabal-version: >= 1.2
+cabal-version: >= 1.6
 build-type:      Configure
 
 -- Cheating here, including the tests/ .cabal +
