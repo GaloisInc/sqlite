@@ -4,7 +4,8 @@ import Database.SQLite
 
 newTable :: TableName -> Table SQLType
 newTable tName = 
-  Table { tabName    = tName
+  VirtualTable
+        { tabName    = tName
         , tabColumns = 
 	    [ Column { colName    = "id"
 	             , colType    = SQLInt NORMAL False False
@@ -20,6 +21,7 @@ newTable tName =
 		     }
             ]
         , tabConstraints = []
+        , tabUsing = "FTS3"
 	}
 
 main :: IO ()
@@ -32,11 +34,17 @@ main = do
   ign $ defineTable h (newTable "names")
   ign $ insertRow h "Poststed" [("Postnr", "4278"),("Poststed", "Veakrossen")]
   ls <- execStatement h "SELECT * FROM Poststed WHERE PostNr=4276;"
-  print ls
+  print (ls :: Either String [[Row Value]])
   ign $ insertRow h "names" [("id", "1"),("name", "foo"), ("age", "30")]
   ls <- execStatement h "SELECT * FROM names;"
-  print ls
+  print (ls :: Either String [[Row String]])
   ls <- execStatement h "SELECT * FROM names where id=1;"
-  print ls
+  print (ls :: Either String [[Row String]])
+  createFunction h "hi" (sum :: [Int] -> Int)
+  ls <- execStatement h "SELECT hi(1,2,3,4,5) AS greeting"
+  print (ls :: Either String [[Row String]])
+  createFunction h "say" putStrLn
+  ls <- execStatement h "SELECT say('Hi') AS greeting"
+  print (ls :: Either String [[Row String]])
   closeConnection h
 

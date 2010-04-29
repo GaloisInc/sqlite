@@ -1,5 +1,5 @@
 Name:            sqlite
-Version:         0.4.1
+Version:         0.4.2
 Synopsis:        Haskell binding to sqlite3
 Description:
     Haskell binding to sqlite3 <http://sqlite.org/>.
@@ -18,7 +18,7 @@ build-type:      Configure
 -- files in the parent (so as to dist them as one.)
 extra-source-files:
   README configure
-  include/sqlite3-local.h
+  include/sqlite3-local.h include/sqlite3.h
   sqlite.buildinfo.unix sqlite.buildinfo.win32
   tests/configure tests/Main.hs tests/Setup.hs
   tests/sqlite-tests.cabal
@@ -28,23 +28,24 @@ extra-tmp-files:
   sqlite.buildinfo
 
 flag builtin-sqlite3
-  default: False
+  default: True
   description: Compile sqlite3 as a part of the library.
 
 library
   Build-depends:   base, pretty, utf8-string, bytestring, time, directory
   Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
-                   TypeSynonymInstances
+                   TypeSynonymInstances,
+                   FlexibleInstances, UndecidableInstances, OverlappingInstances, IncoherentInstances
   Ghc-options:     -Wall
-  Cc-options:      -Wall
+  Cc-options:      -Wall -DSQLITE_ENABLE_FTS3=1 -O3 -DNDEBUG=1
   Include-dirs:    include
   Includes:        sqlite3-local.h
   C-Sources:       cbits/sqlite3-local.c
 
   if flag(builtin-sqlite3)
-    Include-dirs:    sqlite3.5
-    Includes:        sqlite3.5
-    C-Sources:       sqlite3.5/sqlite3.c
+    Include-dirs:    sqlite3.6
+    Includes:        sqlite3.6
+    C-Sources:       sqlite3.6/sqlite3.c
   else
     Extra-Libraries: sqlite3
 

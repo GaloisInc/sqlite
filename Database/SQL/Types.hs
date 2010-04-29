@@ -10,9 +10,8 @@
 --
 -- Basic embedding of SQL types in Haskell.
 --
--- Note: the query part of this modules was imported (with modifications)
+-- Note: the quary part of this modules was imported (with modifications)
 -- from the lowest layer of abstraction of HaskellDB.
---
 module Database.SQL.Types
        ( TableName
        , ColumnName
@@ -54,22 +53,22 @@ import Data.List ( intersperse )
 import Text.PrettyPrint.HughesPJ
 
 type DatabaseName = String
-type TableName    = String
-type ColumnName   = String
-type OpName       = String
+type TableName = String
+type ColumnName = String
+type OpName     = String
 
 data Clause
- = IsNullable   Bool
+ = IsNullable Bool
  | DefaultValue String
- | PrimaryKey   Bool    -- ^ True => auto-increment.
- | ForeignKey   TableName [ColumnName]
- | Clustered    Bool
+ | PrimaryKey Bool    -- ^ Auto-increment?
+ | ForeignKey TableName [ColumnName]
+ | Clustered Bool
  | Unique
 
 data Constraint
   = TablePrimaryKey [ColumnName]
-  | TableUnique     [ColumnName]
-  | TableCheck      SQLExpr
+  | TableUnique [ColumnName]
+  | TableCheck SQLExpr
 
 data Table a
  = Table { tabName        :: String
@@ -98,8 +97,8 @@ data Column a
 -- too fancy..
 data SQLType
  = SQLBoolean
- | SQLChar     (Maybe Int)
- | SQLVarChar  Int
+ | SQLChar    (Maybe Int)
+ | SQLVarChar Int
  | SQLBlob     BlobType
  | SQLDateTime DateTimeType
  | SQLInt      IntType Bool{-unsigned?-} Bool{-zero fill-}
@@ -139,7 +138,7 @@ showType t =
 
     SQLDateTime dt ->
       case dt of
-         DATE      -> "DATE"
+         DATE -> "DATE"
          DATETIME  -> "DATETIME"
          TIMESTAMP -> "TIMESTAMP"
          TIME      -> "TIME"
@@ -164,10 +163,12 @@ showType t =
         case sequence [mbDig,mbScale] of 
            Nothing -> ""
            Just xs -> '(':concat (intersperse "," (map show xs)) ++ ")"
-    SQLEnum tgs -> toTags "ENUM" tgs
-    SQLSet tgs  -> toTags "SET" tgs
+    SQLEnum tgs ->  
+        "ENUM(" ++ toTags tgs ++ ")"
+    SQLSet tgs -> 
+        "SET(" ++ toTags tgs ++ ")"
   where
-    toTags l xs = l ++ '(':concat (intersperse "," (map quote xs)) ++ ")"
+    toTags xs = concat $ intersperse "," (map quote xs)
 
     quote nm = '\'':nm ++ "'"
 

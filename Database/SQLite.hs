@@ -48,6 +48,13 @@ module Database.SQLite
        , withPrim
        , SQLiteHandle()
        , newSQLiteHandle
+
+       -- * User-defined callback functions
+       , IsValue(..)
+       , IsFunctionHandler(..)
+       , createFunction
+       , createFunctionPrim
+       , createAggregatePrim
        ) where
 
 import Database.SQLite.Types
@@ -60,12 +67,13 @@ import Foreign.C.String (newCStringLen, peekCString)
 import Foreign.Storable
 import qualified Foreign.Concurrent as Conc
 import Foreign.Ptr
+import Foreign.StablePtr
 import Foreign.ForeignPtr
 import Data.List
 import Data.Int
 import Data.Char ( isDigit )
 import Data.ByteString (ByteString, packCStringLen, useAsCStringLen)
-import Data.ByteString.Unsafe (unsafePackCStringLen)
+import Data.ByteString.Unsafe (unsafePackCStringLen, unsafeUseAsCStringLen)
 import Control.Monad ((<=<),when)
 import qualified Codec.Binary.UTF8.String as UTF8
 
@@ -123,7 +131,7 @@ defineTableOpt h check tab = execStatement_ h (createTable tab)
     bodyPart = tupled (map toCols (tabColumns t)) ++ ";"
 
   toCols col =
-    "`" ++ toSQLString (colName col) ++ "` " ++ showType (colType col) ++
+    toSQLString (colName col) ++ " " ++ showType (colType col) ++
     ' ':unwords (map showClause (colClauses col))
 
 
@@ -315,9 +323,11 @@ get_text_val stmt n =
     return (UTF8.decodeString str)
 
 get_val :: SQLiteStmt -> CInt -> IO Value
-get_val stmt n =
- do val <- sqlite3_column_value stmt n
-    typ <- sqlite3_value_type val
+get_val stmt n = sqlite3_value_value =<< sqlite3_column_value stmt n
+
+sqlite3_value_value :: SQLiteValue -> IO Value
+sqlite3_value_value val =
+ do typ <- sqlite3_value_type val
     case () of
      _ | typ == sQLITE_NULL    -> return Null
        | typ == sQLITE_INTEGER -> Int `fmap` sqlite3_value_int64 val
@@ -329,9 +339,9 @@ get_val stmt n =
                          bytes <- sqlite3_value_bytes val
                          str <- packCStringLen (castPtr ptr, fromIntegral bytes)
                          return $ Blob str
-       | otherwise -> error "get_val: unknown type"
+       | otherwise -> fail "get_val: unknown type"
 
--- | This is the type of the function supported by the 'add_regexp_support'
+-- | This is the type of the function supported by the 'addRegexpSupport'
 --   function. The first argument is the regular expression to match with
 --   and the second argument is the string to match. The result shall be
 --   'True' for successful match and 'False' otherwise.
@@ -372,3 +382,243 @@ sqlite3_value_cstringlen v =
  do str <- sqlite3_value_text v
     len <- sqlite3_value_bytes v
     return (str, fromIntegral len)
+
+----------
+type Arity = Int
+type FunctionName = String
+type FunctionHandler = SQLiteContext -> [SQLiteValue] -> IO ()
+
+class IsFunctionHandler a where 
+    funcArity   :: a -> Arity
+    funcHandler :: a -> FunctionHandler
+
+instance IsValue r => IsFunctionHandler r where
+    funcArity _         = 0
+    funcHandler f ctx _ = returnSQLiteValue ctx f
+
+instance IsValue r => IsFunctionHandler (String -> r) where
+    funcArity _             = 1
+    funcHandler f ctx (x:_) = returnSQLiteValue ctx =<< fmap f (fromSQLiteValue x)
+    funcHandler _ ctx _     = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue r) => IsFunctionHandler (a -> r) where
+    funcArity _             = 1
+    funcHandler f ctx (x:_) = returnSQLiteValue ctx =<< fmap f (fromSQLiteValue x)
+    funcHandler _ ctx _     = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue b, IsValue r) => IsFunctionHandler (a -> b -> r) where
+    funcArity _                 = 2
+    funcHandler f ctx (x:y:_)   = do
+        x' <- fromSQLiteValue x
+        y' <- fromSQLiteValue y
+        returnSQLiteValue ctx $ f x' y'
+    funcHandler _ ctx _         = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue b, IsValue c, IsValue r) => IsFunctionHandler (a -> b -> c -> r) where
+    funcArity _                 = 3
+    funcHandler f ctx (x:y:z:_) = do
+        x' <- fromSQLiteValue x
+        y' <- fromSQLiteValue y
+        z' <- fromSQLiteValue z
+        returnSQLiteValue ctx $ f x' y' z'
+    funcHandler _ ctx _         = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue b, IsValue c, IsValue d, IsValue r) => IsFunctionHandler (a -> b -> c -> d -> r) where
+    funcArity _                   = 4
+    funcHandler f ctx (x:y:z:w:_) = do
+        x' <- fromSQLiteValue x
+        y' <- fromSQLiteValue y
+        z' <- fromSQLiteValue z
+        w' <- fromSQLiteValue w
+        returnSQLiteValue ctx $ f x' y' z' w'
+    funcHandler _ ctx _         = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue r) => IsFunctionHandler ([a] -> r) where
+    funcArity _            = -1
+    funcHandler f ctx args = do
+        args' <- mapM fromSQLiteValue args
+        returnSQLiteValue ctx $ f args'
+
+instance IsValue r => IsFunctionHandler (IO r) where
+    funcArity _         = 0
+    funcHandler f ctx _ = returnSQLiteValue ctx =<< f
+
+instance IsValue r => IsFunctionHandler (String -> IO r) where
+    funcArity _             = 1
+    funcHandler f ctx (x:_) = returnSQLiteValue ctx =<< f =<< fromSQLiteValue x
+    funcHandler _ ctx _     = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue r) => IsFunctionHandler (a -> IO r) where
+    funcArity _             = 1
+    funcHandler f ctx (x:_) = returnSQLiteValue ctx =<< f =<< fromSQLiteValue x
+    funcHandler _ ctx _     = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue b, IsValue r) => IsFunctionHandler (a -> b -> IO r) where
+    funcArity _                 = 2
+    funcHandler f ctx (x:y:_)   = do
+        x' <- fromSQLiteValue x
+        y' <- fromSQLiteValue y
+        returnSQLiteValue ctx =<< f x' y'
+    funcHandler _ ctx _         = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue b, IsValue c, IsValue r) => IsFunctionHandler (a -> b -> c -> IO r) where
+    funcArity _                 = 3
+    funcHandler f ctx (x:y:z:_) = do
+        x' <- fromSQLiteValue x
+        y' <- fromSQLiteValue y
+        z' <- fromSQLiteValue z
+        returnSQLiteValue ctx =<< f x' y' z'
+    funcHandler _ ctx _         = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue b, IsValue c, IsValue d, IsValue r) => IsFunctionHandler (a -> b -> c -> d -> IO r) where
+    funcArity _                   = 4
+    funcHandler f ctx (x:y:z:w:_) = do
+        x' <- fromSQLiteValue x
+        y' <- fromSQLiteValue y
+        z' <- fromSQLiteValue z
+        w' <- fromSQLiteValue w
+        returnSQLiteValue ctx =<< f x' y' z' w'
+    funcHandler _ ctx _         = returnSQLiteValue ctx ()
+
+instance (IsValue a, IsValue r) => IsFunctionHandler ([a] -> IO r) where
+    funcArity _            = -1
+    funcHandler f ctx args = do
+        args' <- mapM fromSQLiteValue args
+        returnSQLiteValue ctx =<< f args'
+
+createFunction :: IsFunctionHandler a => SQLiteHandle -> FunctionName -> a -> IO ()
+createFunction h name f = createFunctionPrim h name (funcArity f) (funcHandler f)
+
+function_callback :: FunctionHandler -> StepHandler
+function_callback f ctx argc argv = do
+    args <- peekArray (fromEnum argc) argv
+    f ctx args
+
+createFunctionPrim :: SQLiteHandle -> FunctionName -> Arity -> FunctionHandler -> IO ()
+createFunctionPrim h name arity f = do
+    xFunc <- mkStepHandler $ function_callback f
+    withPrim h $ \db -> do
+        withCString name $ \zFunctionName -> do
+            sqlite3_create_function
+                db
+                zFunctionName
+                (toEnum arity)
+                sQLITE_UTF8
+                nullPtr
+                xFunc
+                noCallback
+                noCallback
+    addSQLiteHandleFinalizer h (freeCallback xFunc)
+
+finalize_callback :: IsValue v => a -> (a -> IO v) -> FinalizeContextHandler
+finalize_callback x f ctx = do
+    aVal <- get_aggr_context x ctx
+    returnSQLiteValue ctx =<< f aVal
+
+get_aggr_context :: a -> SQLiteContext -> IO a
+get_aggr_context x ctx = do
+    SQLiteContextBuffer aBuf <- sqlite3_aggregate_context ctx _SZ
+    aPtr <- peek (castPtr aBuf)
+    if aPtr == nullPtr then return x else do
+        let sPtr = castPtrToStablePtr aPtr
+        rv <- deRefStablePtr sPtr
+        freeStablePtr sPtr
+        return rv
+
+set_aggr_context :: SQLiteContext -> a -> IO ()
+set_aggr_context ctx x = do
+    SQLiteContextBuffer aBuf <- sqlite3_aggregate_context ctx _SZ
+    aPtr <- newStablePtr x
+    poke (castPtr aBuf) $ castStablePtrToPtr aPtr
+
+_SZ :: CInt
+_SZ = toEnum $ sizeOf nullPtr
+ 
+step_callback :: IsValue v => a -> (a -> [v] -> IO a) -> StepHandler
+step_callback x f ctx argc argv = do
+    args <- peekArray (fromEnum argc) argv
+    aVal <- get_aggr_context x ctx
+    newVal <- f aVal =<< mapM fromSQLiteValue args
+    set_aggr_context ctx newVal 
+
+createAggregatePrim :: (IsValue i, IsValue o) => SQLiteHandle -> FunctionName -> Arity -> (a -> [i] -> IO a) -> a -> (a -> IO o) -> IO ()
+createAggregatePrim h name arity step x finalize = do
+    stepFunc <- mkStepHandler $ step_callback x step
+    finalizeFunc <- mkFinalizeContextHandler $ finalize_callback x finalize
+    withPrim h $ \db -> do
+        withCString name $ \zFunctionName -> do
+            sqlite3_create_function
+                db
+                zFunctionName
+                (toEnum arity)
+                sQLITE_UTF8
+                nullPtr
+                noCallback
+                stepFunc
+                finalizeFunc
+    addSQLiteHandleFinalizer h (freeCallback stepFunc)
+    addSQLiteHandleFinalizer h (freeCallback finalizeFunc)
+    
+class IsValue a where
+    fromSQLiteValue     :: SQLiteValue -> IO a
+    returnSQLiteValue   :: SQLiteContext -> a -> IO ()
+
+instance IsValue SQLiteValue where
+    fromSQLiteValue     = return
+    returnSQLiteValue   = sqlite3_result_value
+
+instance IsValue Value where
+    fromSQLiteValue     = sqlite3_value_value
+    returnSQLiteValue ctx v = case v of
+        Double d    -> returnSQLiteValue ctx d
+        Int i       -> returnSQLiteValue ctx i
+        Text s      -> returnSQLiteValue ctx s
+        Blob b      -> returnSQLiteValue ctx b
+        Null        -> returnSQLiteValue ctx ()
+
+instance IsValue Double where
+    fromSQLiteValue     = sqlite3_value_double
+    returnSQLiteValue   = sqlite3_result_double
+
+instance IsValue Int64 where
+    fromSQLiteValue     = sqlite3_value_int64
+    returnSQLiteValue   = sqlite3_result_int64
+
+instance IsValue CInt where
+    fromSQLiteValue     = sqlite3_value_int
+    returnSQLiteValue   = sqlite3_result_int
+
+instance IsValue Int where
+    fromSQLiteValue     = fmap fromEnum . sqlite3_value_int
+    returnSQLiteValue   = (. toEnum) . sqlite3_result_int
+
+instance IsValue CStringLen where
+    fromSQLiteValue                   = sqlite3_value_cstringlen
+    returnSQLiteValue ctx (cptr, len) = sqlite3_result_text ctx cptr (toEnum len) sqlite3_static_destructor
+
+instance IsValue String where
+    fromSQLiteValue v = do
+        cstrlen <- fromSQLiteValue v
+        UTF8.decodeString `fmap` peekCStringLen cstrlen
+    returnSQLiteValue ctx str = withCStringLen (UTF8.encodeString str) $ \(cptr, len) -> do
+        sqlite3_result_text ctx cptr (toEnum len) sqlite3_transient_destructor
+
+instance IsValue ByteString where
+    fromSQLiteValue = unsafePackCStringLen <=< fromSQLiteValue
+    returnSQLiteValue ctx bytes = unsafeUseAsCStringLen bytes $ \(cptr, len) -> do
+        sqlite3_result_text ctx cptr (toEnum len) sqlite3_transient_destructor
+
+instance IsValue () where
+    fromSQLiteValue _       = return ()
+    returnSQLiteValue ctx _ = sqlite3_result_null ctx
+
+instance IsValue a => IsValue (Maybe a) where
+    fromSQLiteValue v       = do
+        typ <- sqlite3_value_type v
+        if typ == sQLITE_NULL
+            then return Nothing
+            else fmap Just (fromSQLiteValue v)
+    returnSQLiteValue ctx v = case v of
+        Just v' -> returnSQLiteValue ctx v'
+        _       -> returnSQLiteValue ctx ()
+

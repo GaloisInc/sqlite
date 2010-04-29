@@ -16,5 +16,5 @@ executable sqlite-test {
   }
 
   main-is:              Main.hs
-  ghc-options:          -Wall -fglasgow-exts -lsqlite3
+  ghc-options:          -Wall -fglasgow-exts
 }
