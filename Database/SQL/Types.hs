@@ -32,6 +32,9 @@ module Database.SQL.Types
        , SQLDrop(..)
 
        , Clause(..)
+       , ForeignUpdateCondition(..)
+       , ForeignUpdateAction(..)
+       , Deferment(..)
        , Constraint(..)
        , Table(..)
        , Column(..)
@@ -62,8 +65,30 @@ data Clause
  | DefaultValue String
  | PrimaryKey Bool    -- ^ Auto-increment?
  | ForeignKey TableName [ColumnName]
+              [ForeignUpdateCondition]
+              (Maybe Deferment)
  | Clustered Bool
  | Unique
+
+data ForeignUpdateCondition
+ = OnDelete ForeignUpdateAction
+ | OnUpdate ForeignUpdateAction
+ | Match String
+
+data ForeignUpdateAction
+ = SetNull
+ | SetDefault
+ | Cascade
+ | Restrict
+ | NoAction
+
+data Deferment
+ = Deferrable
+ | DeferrableInitiallyDeferred
+ | DeferrableInitiallyImmediate
+ | NotDeferrable
+ | NotDeferrableInitiallyDeferred
+ | NotDeferrableInitiallyImmediate
 
 data Constraint
   = TablePrimaryKey [ColumnName]
@@ -180,11 +205,38 @@ showClause c =
       | otherwise -> "NOT NULL"
     DefaultValue x -> "DEFAULT " ++ toSQLString x
     PrimaryKey auto -> "PRIMARY KEY" ++ if auto then " AUTOINCREMENT" else ""
-    ForeignKey tb cs -> "FOREIGN KEY " ++ tb ++ '(':concat (intersperse ", " cs) ++ ")"
+    ForeignKey tb cs fcs mdf ->
+      "REFERENCES " ++ tb ++ "(" ++ concat (intersperse ", " cs) ++ ")" ++
+        concatMap showUpdateCondition fcs ++ showDeferment mdf
     Clustered flg
       | flg -> "CLUSTERED"
       | otherwise -> "NONCLUSTERED"
     Unique  -> "UNIQUE"
+ where
+  showUpdateCondition (OnDelete a) = " ON DELETE " ++ showAction a
+  showUpdateCondition (OnUpdate a) = " ON UPDATE " ++ showAction a
+  showUpdateCondition (Match n)    = " MATCH " ++ n
+  --
+  showAction SetNull    = "SET NULL"
+  showAction SetDefault = "SET DEFAULT"
+  showAction Cascade    = "CASCADE"
+  showAction Restrict   = "RESTRICT"
+  showAction NoAction   = "NO ACTION"
+  --
+  showDeferment Nothing =
+    ""
+  showDeferment (Just Deferrable) =
+    " DEFERRABLE"
+  showDeferment (Just DeferrableInitiallyDeferred) =
+    " DEFERRABLE INITIALLY DEFERRED"
+  showDeferment (Just DeferrableInitiallyImmediate) =
+    " DEFERRABLE INITIALLY IMMEDATE"
+  showDeferment (Just NotDeferrable) =
+    " NOT DEFERRABLE"
+  showDeferment (Just NotDeferrableInitiallyDeferred) =
+    " NOT DEFERRABLE INITIALLY DEFERRED"
+  showDeferment (Just NotDeferrableInitiallyImmediate) =
+    " NOT DEFERRABLE INITIALLY IMMEDIATE"
 
 toSQLString :: String -> String
 toSQLString "" = ""
