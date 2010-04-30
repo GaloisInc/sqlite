@@ -131,8 +131,6 @@ data SQLType
                (Maybe Int){-digits after dec. point (the scale)-}
  | SQLFloat    (Maybe Int){-total number of digits-}
                (Maybe Int){-digits following dec. point-}
- | SQLEnum     [String]
- | SQLSet      [String]
 
 data IntType
  = TINY | SMALL | MEDIUM | NORMAL | BIG
@@ -188,10 +186,6 @@ showType t =
         case sequence [mbDig,mbScale] of 
            Nothing -> ""
            Just xs -> '(':concat (intersperse "," (map show xs)) ++ ")"
-    SQLEnum tgs ->  
-        "ENUM(" ++ toTags tgs ++ ")"
-    SQLSet tgs -> 
-        "SET(" ++ toTags tgs ++ ")"
   where
     toTags xs = concat $ intersperse "," (map quote xs)
 
