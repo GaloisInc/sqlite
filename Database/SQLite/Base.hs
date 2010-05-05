@@ -1,4 +1,5 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# OPTIONS_GHC -fno-warn-dodgy-foreign-imports #-}
 --------------------------------------------------------------------
 -- |
 -- Module    : Database.SQLite.Base

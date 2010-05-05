@@ -186,10 +186,6 @@ showType t =
         case sequence [mbDig,mbScale] of 
            Nothing -> ""
            Just xs -> '(':concat (intersperse "," (map show xs)) ++ ")"
-  where
-    toTags xs = concat $ intersperse "," (map quote xs)
-
-    quote nm = '\'':nm ++ "'"
 
 showClause :: Clause -> String
 showClause c = 

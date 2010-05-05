@@ -63,7 +63,6 @@ import Database.SQL.Types
 
 import Foreign.Marshal
 import Foreign.C
-import Foreign.C.String (newCStringLen, peekCString)
 import Foreign.Storable
 import qualified Foreign.Concurrent as Conc
 import Foreign.Ptr
@@ -266,7 +265,7 @@ execParamStatement h query params = withPrim h $ \ db ->
 
   then_finalize db m stmt = do
     e <- m
-    sqlite3_finalize stmt
+    _ <- sqlite3_finalize stmt
     case e of
       Left _ -> to_error db
       Right r -> return (Right r)
@@ -353,9 +352,9 @@ addRegexpSupport :: SQLiteHandle -> RegexpHandler -> IO ()
 addRegexpSupport h f =
  withCString "REGEXP" $ \ zFunctionName ->
   do xFunc <- mkStepHandler $ regexp_callback f
-     withPrim h $ \ db ->
-       sqlite3_create_function db zFunctionName 2 sQLITE_UTF8 nullPtr
-                               xFunc noCallback noCallback
+     _ <- withPrim h $ \ db ->
+            sqlite3_create_function db zFunctionName 2 sQLITE_UTF8 nullPtr
+                                    xFunc noCallback noCallback
      addSQLiteHandleFinalizer h (freeCallback xFunc)
 
 -- | Internal function to marshall the C types into Haskell types to
@@ -497,17 +496,17 @@ function_callback f ctx argc argv = do
 createFunctionPrim :: SQLiteHandle -> FunctionName -> Arity -> FunctionHandler -> IO ()
 createFunctionPrim h name arity f = do
     xFunc <- mkStepHandler $ function_callback f
-    withPrim h $ \db -> do
-        withCString name $ \zFunctionName -> do
-            sqlite3_create_function
-                db
-                zFunctionName
-                (toEnum arity)
-                sQLITE_UTF8
-                nullPtr
-                xFunc
-                noCallback
-                noCallback
+    _ <- withPrim h $ \db -> do
+           withCString name $ \zFunctionName -> do
+               sqlite3_create_function
+                   db
+                   zFunctionName
+                   (toEnum arity)
+                   sQLITE_UTF8
+                   nullPtr
+                   xFunc
+                   noCallback
+                   noCallback
     addSQLiteHandleFinalizer h (freeCallback xFunc)
 
 finalize_callback :: IsValue v => a -> (a -> IO v) -> FinalizeContextHandler
@@ -545,17 +544,17 @@ createAggregatePrim :: (IsValue i, IsValue o) => SQLiteHandle -> FunctionName ->
 createAggregatePrim h name arity step x finalize = do
     stepFunc <- mkStepHandler $ step_callback x step
     finalizeFunc <- mkFinalizeContextHandler $ finalize_callback x finalize
-    withPrim h $ \db -> do
-        withCString name $ \zFunctionName -> do
-            sqlite3_create_function
-                db
-                zFunctionName
-                (toEnum arity)
-                sQLITE_UTF8
-                nullPtr
-                noCallback
-                stepFunc
-                finalizeFunc
+    _ <- withPrim h $ \db -> do
+           withCString name $ \zFunctionName -> do
+               sqlite3_create_function
+                   db
+                   zFunctionName
+                   (toEnum arity)
+                   sQLITE_UTF8
+                   nullPtr
+                   noCallback
+                   stepFunc
+                   finalizeFunc
     addSQLiteHandleFinalizer h (freeCallback stepFunc)
     addSQLiteHandleFinalizer h (freeCallback finalizeFunc)
     
