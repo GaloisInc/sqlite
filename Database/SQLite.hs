@@ -19,7 +19,6 @@
 --
 -- * <http://www.sqlite.org/c3ref/funclist.html>
 --
-
 module Database.SQLite
        ( module Database.SQLite.Base
        , module Database.SQLite.Types
@@ -70,7 +69,6 @@ import Foreign.StablePtr
 import Foreign.ForeignPtr
 import Data.List
 import Data.Int
-import Data.Char ( isDigit )
 import Data.ByteString (ByteString, packCStringLen, useAsCStringLen)
 import Data.ByteString.Unsafe (unsafePackCStringLen, unsafeUseAsCStringLen)
 import Control.Monad ((<=<),when)
@@ -151,9 +149,13 @@ insertRow h tab cs = do
    toVal f p = f p -- ($ f)
 
    quote "" = "''"
-   quote nm@(x:_)
-    | isDigit x = nm
+   quote nm
+    | isNumber nm = nm
     | otherwise = '\'':toSQLString nm ++ "'"
+
+   isNumber x = case reads x of
+                  [(_ :: Float, "")] -> True
+                  _                  -> False
 
 
 -- | Return the rowid (as an Integer) of the most recent
