@@ -28,7 +28,7 @@ extra-tmp-files:
   sqlite.buildinfo
 
 flag builtin-sqlite3
-  default: True
+  default: False
   description: Compile sqlite3 as a part of the library.
 
 library
