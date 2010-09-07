@@ -45,7 +45,7 @@ module Database.SQLite.Base
        , sqlite3_progress_handler
        , sqlite3_open
        , sqlite3_open16
---       , sqlite3_open_v2
+       , sqlite3_open_v2
        , sqlite3_errcode
        , sqlite3_errmsg
 
@@ -350,10 +350,8 @@ foreign import ccall "sqlite3.h sqlite3_open"
 foreign import ccall "sqlite3.h sqlite3_open16"
   sqlite3_open16 :: SQLiteUTF16 -> Ptr SQLite -> IO Status
 
-{-
 foreign import ccall "sqlite3.h sqlite3_open_v2"
   sqlite3_open_v2 :: CString -> Ptr SQLite -> OpenFlags -> CString -> IO Status
--}
 
 foreign import ccall "sqlite3.h sqlite3_errcode"
   sqlite3_errcode :: SQLite -> IO Status

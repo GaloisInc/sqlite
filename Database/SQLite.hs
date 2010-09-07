@@ -26,6 +26,7 @@ module Database.SQLite
 
        -- * Opening and closing a database
        , openConnection
+       , openReadonlyConnection
        , closeConnection
 
        -- * Executing SQL queries on the database
@@ -100,6 +101,21 @@ openConnection dbName =
             newSQLiteHandle db
     _ -> fail ("openDatabase: failed to open " ++ show st)
 
+-- | Open a new database connection read-only, whose name is given
+-- by the 'dbName' argument. A sqlite3 handle is returned.
+--
+-- An exception is thrown if the database does not exist, 
+-- or could not be opened.
+--
+openReadonlyConnection :: String -> IO SQLiteHandle
+openReadonlyConnection dbName =
+  alloca $ \ptr -> do
+  st  <- withCString dbName $ \ c_dbName ->
+                sqlite3_open_v2 c_dbName ptr sQLITE_OPEN_READONLY nullPtr
+  case st of
+    0 -> do db <- peek ptr
+            newSQLiteHandle db
+    _ -> fail ("openDatabase: failed to open " ++ show st)
 
 -- | Close a database connection.
 -- Destroys the SQLite value associated with a database, closes
