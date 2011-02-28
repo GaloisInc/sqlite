@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 --------------------------------------------------------------------
 -- |
 -- Module    :  Database.SQLite
@@ -30,6 +31,7 @@ module Database.SQLite
        , closeConnection
 
        -- * Executing SQL queries on the database
+       , SQLiteResult
        , execStatement
        , execStatement_
        , execParamStatement
@@ -70,6 +72,8 @@ import Foreign.StablePtr
 import Foreign.ForeignPtr
 import Data.List
 import Data.Int
+import Data.Typeable   (Typeable)
+import Data.Data       (Data)
 import Data.ByteString (ByteString, packCStringLen, useAsCStringLen)
 import Data.ByteString.Unsafe (unsafePackCStringLen, unsafeUseAsCStringLen)
 import Control.Monad ((<=<),when)
@@ -191,7 +195,7 @@ data Value
   | Text   String
   | Blob   ByteString
   | Null
-  deriving Show
+  deriving (Show,Typeable,Data)
 
 foreign import ccall "stdlib.h &free"
   p_free :: FunPtr (Ptr a -> IO ())
@@ -320,15 +324,20 @@ ensure m p t f = m >>= \ x -> if p x then f x else t
 ensure_ :: Monad m => m a -> (a -> Bool) -> m b -> m b -> m b
 ensure_ m p t f = ensure m p t (const f)
 
-class SQLiteResult a where
+
+class SQLiteResultPrivate a
+class SQLiteResultPrivate a => SQLiteResult a where
   get_sqlite_val :: SQLiteStmt -> CInt -> IO a
 
+instance SQLiteResultPrivate String
 instance SQLiteResult String where
   get_sqlite_val = get_text_val
 
+instance SQLiteResultPrivate ()
 instance SQLiteResult () where
   get_sqlite_val _ _ = return ()
 
+instance SQLiteResultPrivate Value
 instance SQLiteResult Value where
   get_sqlite_val = get_val
 
