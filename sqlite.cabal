@@ -1,5 +1,5 @@
 Name:            sqlite
-Version:         0.5.1
+Version:         0.5.2
 Synopsis:        Haskell binding to sqlite3
 Description:
     Haskell binding to sqlite3 <http://sqlite.org/>.
