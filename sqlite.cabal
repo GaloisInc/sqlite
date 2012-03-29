@@ -1,5 +1,5 @@
 Name:            sqlite
-Version:         0.5.2
+Version:         0.5.2.1
 Synopsis:        Haskell binding to sqlite3
 Description:
     Haskell binding to sqlite3 <http://sqlite.org/>.
@@ -59,4 +59,4 @@ library
 
 source-repository head
   type:     git
-  location: git://code.galois.com/sqlite.git
+  location: git://github.com/GaloisInc/sqlite.git
