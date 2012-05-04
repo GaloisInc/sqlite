@@ -65,6 +65,7 @@ import Database.SQL.Types
 
 import Foreign.Marshal
 import Foreign.C
+import Foreign.C.Types
 import Foreign.Storable
 import qualified Foreign.Concurrent as Conc
 import Foreign.Ptr
@@ -200,27 +201,36 @@ data Value
 foreign import ccall "stdlib.h &free"
   p_free :: FunPtr (Ptr a -> IO ())
 
+foreign import ccall "string.h memcpy"
+  memcpy :: Ptr a -> Ptr a -> CSize -> IO ()
+
 
 -- | Sets the value of a parameter in a statement.
 -- Perofrms UTF8 encoding.
-bindValue :: SQLiteStmt -> String -> Value -> IO Status
+bindValue :: SQLiteStmt -> String -> Value -> IO (Status, IO ())
 bindValue stmt key value =
-  withCString (UTF8.encodeString key)      $ \ckey ->
-  ensure (sqlite3_bind_parameter_index stmt ckey)
-         (> 0)  (return sQLITE_OK)         $ \ix ->
-  case value of
-    Text txt ->
-      do (cptr,len) <- newCStringLen (UTF8.encodeString txt)
-         res <- sqlite3_bind_text stmt ix cptr (fromIntegral len) p_free
-         when (res /= sQLITE_OK) (free cptr)
-         return res
-    Null     -> sqlite3_bind_null stmt ix
-    Int x    -> sqlite3_bind_int64 stmt ix x
-    Double x -> sqlite3_bind_double stmt ix x
-    Blob   x -> useAsCStringLen x $ \ (ptr,bytes) ->
-                sqlite3_bind_blob stmt ix (castPtr ptr)
-                                  (fromIntegral bytes) nullFunPtr
-
+  withCString (UTF8.encodeString key) $ \ ckey -> do 
+    ix <- sqlite3_bind_parameter_index stmt ckey
+    if ix <= 0 then return (sQLITE_OK, return ()) else do
+      case value of
+        Text txt ->
+          do (cptr,len) <- newCStringLen (UTF8.encodeString txt)
+             res <- sqlite3_bind_text stmt ix cptr (fromIntegral len) p_free
+             when (res /= sQLITE_OK) (free cptr)
+             return (res, return ())
+        Null     -> addEmpty `fmap` sqlite3_bind_null stmt ix
+        Int x    -> addEmpty `fmap` sqlite3_bind_int64 stmt ix x
+        Double x -> addEmpty `fmap` sqlite3_bind_double stmt ix x
+        Blob   x -> useAsCStringLen x $ \ (ptr,bytes) -> do
+                      outPtr <- mallocBytes bytes
+                      memcpy outPtr ptr (fromIntegral bytes)
+                      status <- sqlite3_bind_blob stmt ix (castPtr outPtr)
+                                                  (fromIntegral bytes)
+                                                  nullFunPtr
+                      return (status, free outPtr)
+ where
+  addEmpty :: Status -> (Status, IO ())
+  addEmpty x = (x, return ())
 
 -- | Called when we know that an error has occured.
 to_error :: SQLite -> IO (Either String a)
@@ -266,13 +276,14 @@ execParamStatement h query params = withPrim h $ \ db ->
       loop (x:xs)
 
   recv_rows db stmt =
-    do mapM_ (uncurry $ bindValue stmt) params
+    do gcs <- map snd `fmap` mapM (uncurry $ bindValue stmt) params
        col_num <- sqlite3_column_count stmt
        let cols = [0..col_num-1]
        -- Note: column names should not contain \0 characters
        names <- mapM (peekCString <=< sqlite3_column_name stmt) cols
        let decoded_names = map UTF8.decodeString names
-       get_rows db stmt cols decoded_names []
+       res <- get_rows db stmt cols decoded_names []
+       return (res, gcs)
 
   get_rows db stmt cols col_names rows = do
     res <- sqlite3_step stmt
@@ -286,8 +297,9 @@ execParamStatement h query params = withPrim h $ \ db ->
       else to_error db
 
   then_finalize db m stmt = do
-    e <- m
+    (e, gcs) <- m
     _ <- sqlite3_finalize stmt
+    sequence_ gcs
     case e of
       Left _ -> to_error db
       Right r -> return (Right r)
