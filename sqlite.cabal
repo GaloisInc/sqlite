@@ -10,6 +10,7 @@ Author:          Galois Inc
 Maintainer:      Adam Wick <awick@uhsure.com>
 Copyright:
   Copyright (c) 2007-8, Galois Inc
+Homepage:        http://github.com/GaloisInc/sqlite
 Category:        Database
 cabal-version: >= 1.6
 build-type:      Configure
