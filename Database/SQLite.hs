@@ -64,7 +64,7 @@ import Database.SQLite.Base
 import Database.SQL.Types
 
 import Foreign.Marshal hiding (free, malloc)
-import Foreign.C
+import Foreign.C (CString, CStringLen)
 import Foreign.C.Types
 import Foreign.Storable
 import qualified Foreign.Concurrent as Conc
@@ -100,7 +100,7 @@ newSQLiteHandle h@(SQLite p) = SQLiteHandle `fmap` Conc.newForeignPtr p close
 openConnection :: String -> IO SQLiteHandle
 openConnection dbName =
   alloca $ \ptr -> do
-  st  <- withCString dbName $ \ c_dbName ->
+  st  <- withUtf8CString dbName $ \ c_dbName ->
                 sqlite3_open c_dbName ptr
   case st of
     0 -> do db <- peek ptr
@@ -116,7 +116,7 @@ openConnection dbName =
 openReadonlyConnection :: String -> IO SQLiteHandle
 openReadonlyConnection dbName =
   alloca $ \ptr -> do
-  st  <- withCString dbName $ \ c_dbName ->
+  st  <- withUtf8CString dbName $ \ c_dbName ->
                 sqlite3_open_v2 c_dbName ptr sQLITE_OPEN_READONLY nullPtr
   case st of
     0 -> do db <- peek ptr
@@ -241,7 +241,7 @@ bindValue stmt key value =
 
 -- | Called when we know that an error has occured.
 to_error :: SQLite -> IO (Either String a)
-to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
+to_error db = Left `fmap` (peekUtf8CString =<< sqlite3_errmsg db)
 
 
 
@@ -321,7 +321,7 @@ execStatement_ h sqlStmt = withPrim h $ \ db ->
   sqlite3_exec db c_sqlStmt noCallback nullPtr nullPtr >>= \ st ->
   if st == sQLITE_OK
     then return Nothing
-    else fmap Just . peekCString =<< sqlite3_errmsg db
+    else fmap Just . peekUtf8CString =<< sqlite3_errmsg db
 
 tupled :: [String] -> String
 tupled xs = "(" ++ concat (intersperse ", " xs) ++ ")"
@@ -375,7 +375,7 @@ sqlite3_value_value val =
        | typ == sQLITE_INTEGER -> Int `fmap` sqlite3_value_int64 val
        | typ == sQLITE_FLOAT   -> Double `fmap` sqlite3_value_double val
        | typ == sQLITE_TEXT    ->
-                     fmap Text . peekCStringLen =<< sqlite3_value_cstringlen val
+                     fmap Text . peekUtf8CStringLen =<< sqlite3_value_cstringlen val
        | typ == sQLITE_BLOB    ->
                       do SQLiteBLOB ptr <- sqlite3_value_blob val
                          bytes <- sqlite3_value_bytes val
@@ -393,7 +393,7 @@ type RegexpHandler = ByteString -> ByteString -> IO Bool
 --   REGEXP(regexp,str) is used in an SQL query.
 addRegexpSupport :: SQLiteHandle -> RegexpHandler -> IO ()
 addRegexpSupport h f =
- withCString "REGEXP" $ \ zFunctionName ->
+ withUtf8CString "REGEXP" $ \ zFunctionName ->
   do xFunc <- mkStepHandler $ regexp_callback f
      _ <- withPrim h $ \ db ->
             sqlite3_create_function db zFunctionName 2 sQLITE_UTF8 nullPtr
@@ -582,7 +582,7 @@ createFunctionPrim :: SQLiteHandle -> FunctionName -> Arity -> FunctionHandler -
 createFunctionPrim h name arity f = do
     xFunc <- mkStepHandler $ function_callback f
     _ <- withPrim h $ \db -> do
-           withCString name $ \zFunctionName -> do
+           withUtf8CString name $ \zFunctionName -> do
                sqlite3_create_function
                    db
                    zFunctionName
@@ -630,7 +630,7 @@ createAggregatePrim h name arity step x finalize = do
     stepFunc <- mkStepHandler $ step_callback x step
     finalizeFunc <- mkFinalizeContextHandler $ finalize_callback x finalize
     _ <- withPrim h $ \db -> do
-           withCString name $ \zFunctionName -> do
+           withUtf8CString name $ \zFunctionName -> do
                sqlite3_create_function
                    db
                    zFunctionName
