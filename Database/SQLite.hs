@@ -63,8 +63,8 @@ import Database.SQLite.Types
 import Database.SQLite.Base
 import Database.SQL.Types
 
-import Foreign.Marshal
-import Foreign.C
+import Foreign.Marshal hiding (free, malloc)
+import Foreign.C (CString, CStringLen)
 import Foreign.C.Types
 import Foreign.Storable
 import qualified Foreign.Concurrent as Conc
@@ -77,6 +77,7 @@ import Data.Typeable   (Typeable)
 import Data.Data       (Data)
 import Data.ByteString (ByteString, packCStringLen, useAsCStringLen)
 import Data.ByteString.Unsafe (unsafePackCStringLen, unsafeUseAsCStringLen)
+import Control.Exception (bracketOnError)
 import Control.Monad ((<=<),when)
 import qualified Codec.Binary.UTF8.String as UTF8
 
@@ -99,7 +100,7 @@ newSQLiteHandle h@(SQLite p) = SQLiteHandle `fmap` Conc.newForeignPtr p close
 openConnection :: String -> IO SQLiteHandle
 openConnection dbName =
   alloca $ \ptr -> do
-  st  <- withCString dbName $ \ c_dbName ->
+  st  <- withUtf8CString dbName $ \ c_dbName ->
                 sqlite3_open c_dbName ptr
   case st of
     0 -> do db <- peek ptr
@@ -115,7 +116,7 @@ openConnection dbName =
 openReadonlyConnection :: String -> IO SQLiteHandle
 openReadonlyConnection dbName =
   alloca $ \ptr -> do
-  st  <- withCString dbName $ \ c_dbName ->
+  st  <- withUtf8CString dbName $ \ c_dbName ->
                 sqlite3_open_v2 c_dbName ptr sQLITE_OPEN_READONLY nullPtr
   case st of
     0 -> do db <- peek ptr
@@ -198,6 +199,12 @@ data Value
   | Null
   deriving (Show,Typeable,Data)
 
+foreign import ccall "stdlib.h malloc"
+  malloc :: CSize -> IO (Ptr a)
+
+foreign import ccall "stdlib.h free"
+  free :: Ptr a -> IO ()
+
 foreign import ccall "stdlib.h &free"
   p_free :: FunPtr (Ptr a -> IO ())
 
@@ -206,15 +213,15 @@ foreign import ccall "string.h memcpy"
 
 
 -- | Sets the value of a parameter in a statement.
--- Perofrms UTF8 encoding.
+-- Performs UTF8 encoding.
 bindValue :: SQLiteStmt -> String -> Value -> IO (Status, IO ())
 bindValue stmt key value =
-  withCString (UTF8.encodeString key) $ \ ckey -> do 
+  withUtf8CString key $ \ ckey -> do
     ix <- sqlite3_bind_parameter_index stmt ckey
     if ix <= 0 then return (sQLITE_OK, return ()) else do
       case value of
         Text txt ->
-          do (cptr,len) <- newCStringLen (UTF8.encodeString txt)
+          do (cptr, len) <- mallocUtf8CStringLen txt
              res <- sqlite3_bind_text stmt ix cptr (fromIntegral len) p_free
              when (res /= sQLITE_OK) (free cptr)
              return (res, return ())
@@ -234,7 +241,7 @@ bindValue stmt key value =
 
 -- | Called when we know that an error has occured.
 to_error :: SQLite -> IO (Either String a)
-to_error db = Left `fmap` (peekCString =<< sqlite3_errmsg db)
+to_error db = Left `fmap` (peekUtf8CString =<< sqlite3_errmsg db)
 
 
 
@@ -255,8 +262,7 @@ execParamStatement :: SQLiteResult a => SQLiteHandle -> String
 execParamStatement h query params = withPrim h $ \ db ->
   alloca $ \stmt_ptr ->
   alloca $ \pzTail ->
-  let encoded = UTF8.encodeString query in
-  withCString encoded $ \zSql -> do
+  withUtf8CString query $ \zSql -> do
     poke pzTail zSql
     prepare_loop db stmt_ptr pzTail
 
@@ -280,9 +286,8 @@ execParamStatement h query params = withPrim h $ \ db ->
        col_num <- sqlite3_column_count stmt
        let cols = [0..col_num-1]
        -- Note: column names should not contain \0 characters
-       names <- mapM (peekCString <=< sqlite3_column_name stmt) cols
-       let decoded_names = map UTF8.decodeString names
-       res <- get_rows db stmt cols decoded_names []
+       names <- mapM (peekUtf8CString <=< sqlite3_column_name stmt) cols
+       res <- get_rows db stmt cols names []
        return (res, gcs)
 
   get_rows db stmt cols col_names rows = do
@@ -312,11 +317,11 @@ execStatement db s = execParamStatement db s []
 -- | Returns an error, or 'Nothing' if everything was OK.
 execStatement_ :: SQLiteHandle -> String -> IO (Maybe String)
 execStatement_ h sqlStmt = withPrim h $ \ db ->
-  withCString (UTF8.encodeString sqlStmt)              $ \ c_sqlStmt ->
+  withUtf8CString sqlStmt $ \ c_sqlStmt ->
   sqlite3_exec db c_sqlStmt noCallback nullPtr nullPtr >>= \ st ->
   if st == sQLITE_OK
     then return Nothing
-    else fmap Just . peekCString =<< sqlite3_errmsg db
+    else fmap Just . peekUtf8CString =<< sqlite3_errmsg db
 
 tupled :: [String] -> String
 tupled xs = "(" ++ concat (intersperse ", " xs) ++ ")"
@@ -357,8 +362,7 @@ get_text_val :: SQLiteStmt -> CInt -> IO String
 get_text_val stmt n =
  do ptr   <- sqlite3_column_text stmt n
     bytes <- sqlite3_column_bytes stmt n
-    str   <- peekCStringLen (ptr,fromIntegral bytes)
-    return (UTF8.decodeString str)
+    peekUtf8CStringLen (ptr, fromIntegral bytes)
 
 get_val :: SQLiteStmt -> CInt -> IO Value
 get_val stmt n = sqlite3_value_value =<< sqlite3_column_value stmt n
@@ -371,7 +375,7 @@ sqlite3_value_value val =
        | typ == sQLITE_INTEGER -> Int `fmap` sqlite3_value_int64 val
        | typ == sQLITE_FLOAT   -> Double `fmap` sqlite3_value_double val
        | typ == sQLITE_TEXT    ->
-                     fmap Text . peekCStringLen =<< sqlite3_value_cstringlen val
+                     fmap Text . peekUtf8CStringLen =<< sqlite3_value_cstringlen val
        | typ == sQLITE_BLOB    ->
                       do SQLiteBLOB ptr <- sqlite3_value_blob val
                          bytes <- sqlite3_value_bytes val
@@ -389,7 +393,7 @@ type RegexpHandler = ByteString -> ByteString -> IO Bool
 --   REGEXP(regexp,str) is used in an SQL query.
 addRegexpSupport :: SQLiteHandle -> RegexpHandler -> IO ()
 addRegexpSupport h f =
- withCString "REGEXP" $ \ zFunctionName ->
+ withUtf8CString "REGEXP" $ \ zFunctionName ->
   do xFunc <- mkStepHandler $ regexp_callback f
      _ <- withPrim h $ \ db ->
             sqlite3_create_function db zFunctionName 2 sQLITE_UTF8 nullPtr
@@ -420,6 +424,48 @@ sqlite3_value_cstringlen v =
  do str <- sqlite3_value_text v
     len <- sqlite3_value_bytes v
     return (str, fromIntegral len)
+
+checkedFromIntegral :: (Integral a, Integral b) => a -> b
+checkedFromIntegral x
+  | toInteger x == toInteger y = y
+  | otherwise = error "safeFromIntegral: cannot convert integer (out of range)"
+  where y = fromIntegral x
+
+encodeCStringLen :: String -> ([CChar], Int)
+encodeCStringLen str = (str', length str')
+  where str' = fromIntegral <$> UTF8.encode str
+
+decodeCString :: [CChar] -> String
+decodeCString = UTF8.decode . fmap fromIntegral
+
+mallocUtf8CStringLen :: String -> IO CStringLen
+mallocUtf8CStringLen str =
+  bracketOnError (malloc (checkedFromIntegral len)) free $ \ ptr -> do
+    pokeArray ptr str'
+    return (ptr, len)
+  where (str', len) = encodeCStringLen str
+
+peekUtf8CString :: CString -> IO String
+peekUtf8CString ptr =
+  fmap decodeCString (peekArray0 0 ptr)
+
+peekUtf8CStringLen :: CStringLen -> IO String
+peekUtf8CStringLen (ptr, len) =
+  fmap decodeCString (peekArray len ptr)
+
+withUtf8CString :: String -> (CString -> IO b) -> IO b
+withUtf8CString str action =
+  allocaArray0 len $ \ ptr -> do
+    pokeArray0 0 ptr str'
+    action ptr
+  where (str', len) = encodeCStringLen str
+
+withUtf8CStringLen :: String -> (CStringLen -> IO b) -> IO b
+withUtf8CStringLen str action = do
+  allocaArray len $ \ ptr -> do
+    pokeArray ptr str'
+    action (ptr, len)
+  where (str', len) = encodeCStringLen str
 
 ----------
 type Arity = Int
@@ -536,7 +582,7 @@ createFunctionPrim :: SQLiteHandle -> FunctionName -> Arity -> FunctionHandler -
 createFunctionPrim h name arity f = do
     xFunc <- mkStepHandler $ function_callback f
     _ <- withPrim h $ \db -> do
-           withCString name $ \zFunctionName -> do
+           withUtf8CString name $ \zFunctionName -> do
                sqlite3_create_function
                    db
                    zFunctionName
@@ -584,7 +630,7 @@ createAggregatePrim h name arity step x finalize = do
     stepFunc <- mkStepHandler $ step_callback x step
     finalizeFunc <- mkFinalizeContextHandler $ finalize_callback x finalize
     _ <- withPrim h $ \db -> do
-           withCString name $ \zFunctionName -> do
+           withUtf8CString name $ \zFunctionName -> do
                sqlite3_create_function
                    db
                    zFunctionName
@@ -637,8 +683,8 @@ instance IsValue CStringLen where
 instance IsValue String where
     fromSQLiteValue v = do
         cstrlen <- fromSQLiteValue v
-        UTF8.decodeString `fmap` peekCStringLen cstrlen
-    returnSQLiteValue ctx str = withCStringLen (UTF8.encodeString str) $ \(cptr, len) -> do
+        peekUtf8CStringLen cstrlen
+    returnSQLiteValue ctx str = withUtf8CStringLen str $ \(cptr, len) -> do
         sqlite3_result_text ctx cptr (toEnum len) sqlite3_transient_destructor
 
 instance IsValue ByteString where
