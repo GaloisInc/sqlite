@@ -1,12 +1,15 @@
 module Main where
 
 import Database.SQLite
+import System.IO.Error (catchIOError)
+
+catch = catchIOError
 
 newTable :: TableName -> Table SQLType
-newTable tName = 
+newTable tName =
   VirtualTable
         { tabName    = tName
-        , tabColumns = 
+        , tabColumns =
 	    [ Column { colName    = "id"
 	             , colType    = SQLInt NORMAL False False
 		     , colClauses = [PrimaryKey True]
@@ -26,9 +29,9 @@ newTable tName =
 
 main :: IO ()
 main = do
-  let dbFile = "test.db"
-  let ign act = 
-        catch (act >> return ()) 
+  let dbFile = "tests/test.db"
+  let ign act =
+        catch (act >> return ())
               (\ err -> putStrLn ("Error (but ignoring) -- " ++ show err) >> return ())
   h <- openConnection dbFile
   ign $ defineTable h (newTable "names")
