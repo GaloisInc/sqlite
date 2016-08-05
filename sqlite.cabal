@@ -36,7 +36,7 @@ library
                    directory
   Extensions:      ForeignFunctionInterface, GeneralizedNewtypeDeriving,
                    TypeSynonymInstances, ScopedTypeVariables,
-                   FlexibleInstances, UndecidableInstances, OverlappingInstances, IncoherentInstances
+                   FlexibleInstances, UndecidableInstances, IncoherentInstances
   Ghc-options:     -Wall
   Cc-options:      -Wall -DSQLITE_ENABLE_FTS3=1 -O3 -DNDEBUG=1
   Include-dirs:    include
