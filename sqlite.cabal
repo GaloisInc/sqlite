@@ -11,7 +11,7 @@ Maintainer:      Adam Wick <awick@uhsure.com>
 Copyright:
   Copyright (c) 2007-8, Galois Inc
 Category:        Database
-cabal-version: >= 1.6
+cabal-version: >= 1.8
 build-type:      Configure
 
 -- Cheating here, including the tests/ .cabal +
@@ -56,6 +56,12 @@ library
     Database.SQLite.Types,
     Database.SQL
     Database.SQL.Types
+
+test-suite sqlite-tests
+  Type:            exitcode-stdio-1.0
+  Build-depends:   base, sqlite
+  Main-is:         Main.hs
+  hs-source-dirs:  tests/
 
 source-repository head
   type:     git
