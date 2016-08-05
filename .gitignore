@@ -5,4 +5,5 @@ dist
 *.swp
 .installed-pkg-config
 .setup-config
-
+.cabal-sandbox/
+cabal.sandbox.config
