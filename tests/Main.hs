@@ -10,22 +10,25 @@ newTable tName =
   VirtualTable
         { tabName    = tName
         , tabColumns =
-	    [ Column { colName    = "id"
-	             , colType    = SQLInt NORMAL False False
-		     , colClauses = [PrimaryKey True]
-		     }
-	    , Column { colName    = "name"
-	             , colType    = SQLVarChar 200
-		     , colClauses = [IsNullable False]
-		     }
-	    , Column { colName    = "age"
-	             , colType    = SQLVarChar 200
-		     , colClauses = [IsNullable True]
-		     }
-            ]
+              [ Column { colName    = "id"
+                       , colType    = SQLInt NORMAL False False
+                       , colClauses = [PrimaryKey True]
+                       }
+
+              , Column { colName    = "name"
+                       , colType    = SQLVarChar 200
+                       , colClauses = [IsNullable False]
+                       }
+
+              , Column { colName    = "age"
+                       , colType    = SQLVarChar 200
+                       , colClauses = [IsNullable True]
+                       }
+              ]
+
         , tabConstraints = []
         , tabUsing = "FTS3"
-	}
+        }
 
 main :: IO ()
 main = do
