@@ -51,21 +51,6 @@ withTempTable f = withTempDB $ \h ->
     defineTable h (newTable "names") >> f tab h
 
 
-flattenResults :: SQLiteResult a => IO (Either String [[Row a]]) -> IO (Either String [Row a])
-flattenResults results = mapResult concat <$> results
-    where mapResult f (Right r) = Right (f r)
-          mapResult f (Left l) = Left l
-
-
-flatExecStatement :: SQLiteResult a => SQLiteHandle -> String -> IO (Either String [Row a])
-flatExecStatement h sqlStmt = flattenResults $ execStatement h sqlStmt
-
-
-flatExecParamStatement :: SQLiteResult a => SQLiteHandle -> String -> [(String, Value)]
-                                         -> IO (Either String [Row a])
-flatExecParamStatement h sqlStmt ps = flattenResults $ execParamStatement h sqlStmt ps
-
-
 insertManyRows :: SQLiteHandle -> String -> [Row String] -> IO (Maybe String)
 insertManyRows h tab rows = chain insertions
     where insertions   = map (insertRow h tab) rows
@@ -87,12 +72,16 @@ spec = parallel $ do
 
     describe "execStatement and execStatement_" $ do
         it "runs select statements" $ withTempDB $ \h -> do
-            result <- flatExecStatement h "SELECT 'Hello, World' AS h"
-            result `shouldBe` Right [[("h", "Hello, World")]]
+            result <- execStatement h "SELECT 'Hello, World' AS h"
+            result `shouldBe` Right [[[("h", "Hello, World")]]]
 
         it "fails on bad SQL" $ withTempDB $ \h -> do
             error <- execStatement_ h "SELECT aieauie"
             error `shouldSatisfy` isJust
+
+        it "can execute multiple statements" $ withTempDB $ \h -> do
+            result <- execStatement h "SELECT 1 as a; SELECT 2 as b"
+            result `shouldBe` Right [[[("a", "1")]], [[("b", "2")]]]
 
 
     describe "insertRow" $ do
@@ -101,16 +90,16 @@ spec = parallel $ do
             error <- insertRow h tab row
             error `shouldSatisfy` isNothing
 
-            ls <- flatExecStatement h $ printf "SELECT * FROM %s" tab
-            ls `shouldBe` Right [row]
+            ls <- execStatement h $ printf "SELECT * FROM %s" tab
+            ls `shouldBe` Right [[row]]
 
 
         it "can be called many times" $ withTempTable $ \tab h -> do
             error <- insertManyRows h tab rows
             error `shouldSatisfy` isNothing
 
-            ls <- flatExecStatement h $ printf "SELECT * FROM %s ORDER BY id" tab
-            ls `shouldBe` Right rows
+            ls <- execStatement h $ printf "SELECT * FROM %s ORDER BY id" tab
+            ls `shouldBe` Right [rows]
 
 
         it "fails on bad row insertion" $ withTempTable $ \tab h -> do
@@ -121,8 +110,8 @@ spec = parallel $ do
     describe "createFunction" $ do
         it "runs haskell code" $ withTempDB $ \h -> do
             createFunction h "hi" (sum :: [Int] -> Int)
-            ls <- flatExecStatement h "SELECT hi(1, 2, 3, 4, 5) AS greeting"
-            ls `shouldBe` Right [[("greeting", show $ sum [1, 2, 3, 4, 5])]]
+            ls <- execStatement h "SELECT hi(1, 2, 3, 4, 5) AS greeting"
+            ls `shouldBe` Right [[[("greeting", show $ sum [1, 2, 3, 4, 5])]]]
 
 
     describe "execParamStatement" $ do
@@ -130,10 +119,14 @@ spec = parallel $ do
             error <- insertManyRows h tab rows
             error `shouldSatisfy` isNothing
 
-            let query = flatExecParamStatement h $
+            let query = execParamStatement h $
                             printf "SELECT name FROM %s WHERE name like :pattern" tab
+
             result <- query [(":pattern", Text "Max%")]
-            result `shouldBe` Right [[("name", "Max Munstermann")]]
+            result `shouldBe` Right [[[("name", "Max Munstermann")]]]
+
+            result <- query [(":pattern", Text "Erika%")]
+            result `shouldBe` Right [[[("name", "Erika Munstermann")]]]
 
 
 main :: IO ()

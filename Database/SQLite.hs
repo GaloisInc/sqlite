@@ -309,7 +309,20 @@ execParamStatement h query params = withPrim h $ \ db ->
       Left _ -> to_error db
       Right r -> return (Right r)
 
--- | Evaluate the SQL statement specified by 'sqlStmt'
+-- | Evaluate the SQL statement specified by 's'
+--
+-- Results have two levels of nesting because multiple SQL statements can be
+-- executed in order. These statements are separated by semi-colon.
+--
+-- Examples:
+--
+-- >>> :set -XScopedTypeVariables
+-- >>> let h = openConnection ":memory:"
+-- >>> execStatement h "CREATE TABLE foo(bar int)"
+-- >>> execStatement h "INSERT INTO foo(bar) VALUES (1), (2)"
+-- >>> execStatement h "SELECT bar as a FROM foo ORDER BY 1; SELECT 1 as b, 2 as c"
+-- Right [[[("a", "1")], [("a", "2")]], [[("b", "1), ("c", "2")]]]
+--
 execStatement :: SQLiteResult a
                => SQLiteHandle -> String -> IO (Either String [[Row a]])
 execStatement db s = execParamStatement db s []
