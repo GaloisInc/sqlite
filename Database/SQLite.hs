@@ -110,7 +110,7 @@ openConnection dbName =
 -- | Open a new database connection read-only, whose name is given
 -- by the 'dbName' argument. A sqlite3 handle is returned.
 --
--- An exception is thrown if the database does not exist, 
+-- An exception is thrown if the database does not exist,
 -- or could not be opened.
 --
 openReadonlyConnection :: String -> IO SQLiteHandle
@@ -472,7 +472,7 @@ type Arity = Int
 type FunctionName = String
 type FunctionHandler = SQLiteContext -> [SQLiteValue] -> IO ()
 
-class IsFunctionHandler a where 
+class IsFunctionHandler a where
     funcArity   :: a -> Arity
     funcHandler :: a -> FunctionHandler
 
@@ -617,13 +617,13 @@ set_aggr_context ctx x = do
 
 _SZ :: CInt
 _SZ = toEnum $ sizeOf nullPtr
- 
+
 step_callback :: IsValue v => a -> (a -> [v] -> IO a) -> StepHandler
 step_callback x f ctx argc argv = do
     args <- peekArray (fromEnum argc) argv
     aVal <- get_aggr_context x ctx
     newVal <- f aVal =<< mapM fromSQLiteValue args
-    set_aggr_context ctx newVal 
+    set_aggr_context ctx newVal
 
 createAggregatePrim :: (IsValue i, IsValue o) => SQLiteHandle -> FunctionName -> Arity -> (a -> [i] -> IO a) -> a -> (a -> IO o) -> IO ()
 createAggregatePrim h name arity step x finalize = do
@@ -642,7 +642,7 @@ createAggregatePrim h name arity step x finalize = do
                    finalizeFunc
     addSQLiteHandleFinalizer h (freeCallback stepFunc)
     addSQLiteHandleFinalizer h (freeCallback finalizeFunc)
-    
+
 class IsValue a where
     fromSQLiteValue     :: SQLiteValue -> IO a
     returnSQLiteValue   :: SQLiteContext -> a -> IO ()
