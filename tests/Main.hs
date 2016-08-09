@@ -51,13 +51,19 @@ withTempTable f = withTempDB $ \h ->
     defineTable h (newTable "names") >> f tab h
 
 
-flatExecStatement :: SQLiteResult a => SQLiteHandle -> String -> IO (Either String [Row a])
-flatExecStatement h sqlStmt =
-    let flattenResults = concat
-        mapResult f (Right r) = Right (f r)
-        mapResult f (Left l) = Left l
+flattenResults :: SQLiteResult a => IO (Either String [[Row a]]) -> IO (Either String [Row a])
+flattenResults results = mapResult concat <$> results
+    where mapResult f (Right r) = Right (f r)
+          mapResult f (Left l) = Left l
 
-    in mapResult flattenResults <$> execStatement h sqlStmt
+
+flatExecStatement :: SQLiteResult a => SQLiteHandle -> String -> IO (Either String [Row a])
+flatExecStatement h sqlStmt = flattenResults $ execStatement h sqlStmt
+
+
+flatExecParamStatement :: SQLiteResult a => SQLiteHandle -> String -> [(String, Value)]
+                                         -> IO (Either String [Row a])
+flatExecParamStatement h sqlStmt ps = flattenResults $ execParamStatement h sqlStmt ps
 
 
 insertManyRows :: SQLiteHandle -> String -> [Row String] -> IO (Maybe String)
@@ -74,6 +80,11 @@ insertManyRows h tab rows = chain insertions
 
 spec :: Spec
 spec = parallel $ do
+    let rows = [ [ ("id", "1"), ("name", "Erika Munstermann"), ("age", "28") ]
+               , [ ("id", "2"), ("name", "Max Munstermann"), ("age", "24") ]
+               ]
+
+
     describe "execStatement and execStatement_" $ do
         it "runs select statements" $ withTempDB $ \h -> do
             result <- flatExecStatement h "SELECT 'Hello, World' AS h"
@@ -95,9 +106,6 @@ spec = parallel $ do
 
 
         it "can be called many times" $ withTempTable $ \tab h -> do
-            let rows = [ [ ("id", "1"), ("name", "Erika Munstermann"), ("age", "28") ]
-                       , [ ("id", "2"), ("name", "Max Munstermann"), ("age", "24") ]
-                       ]
             error <- insertManyRows h tab rows
             error `shouldSatisfy` isNothing
 
@@ -109,11 +117,23 @@ spec = parallel $ do
             error <- insertRow h tab [("foo", "bar")]
             error `shouldSatisfy` isJust
 
+
     describe "createFunction" $ do
         it "runs haskell code" $ withTempDB $ \h -> do
             createFunction h "hi" (sum :: [Int] -> Int)
             ls <- flatExecStatement h "SELECT hi(1, 2, 3, 4, 5) AS greeting"
             ls `shouldBe` Right [[("greeting", show $ sum [1, 2, 3, 4, 5])]]
+
+
+    describe "execParamStatement" $ do
+        it "binds values" $ withTempTable $ \tab h -> do
+            error <- insertManyRows h tab rows
+            error `shouldSatisfy` isNothing
+
+            let query = flatExecParamStatement h $
+                            printf "SELECT name FROM %s WHERE name like :pattern" tab
+            result <- query [(":pattern", Text "Max%")]
+            result `shouldBe` Right [[("name", "Max Munstermann")]]
 
 
 main :: IO ()
