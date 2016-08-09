@@ -34,8 +34,11 @@ module Database.SQLite
        , SQLiteResult
        , execStatement
        , execStatement_
+       , execStatementWithStatusCode
        , execParamStatement
        , execParamStatement_
+       , execParamStatementWithStatusCode
+       , SQLiteErrorWithCode
 
        -- * Basic insertion operations
        , insertRow
@@ -137,6 +140,7 @@ withPrim (SQLiteHandle h) f = withForeignPtr h (f . SQLite)
 -- Adding data
 
 type Row a = [(ColumnName,a)]
+type SQLiteErrorWithCode = (Status, String)
 
 defineTableOpt :: SQLiteHandle -> Bool -> SQLTable -> IO (Maybe String)
 defineTableOpt h check tab = execStatement_ h (createTable tab)
@@ -239,10 +243,12 @@ bindValue stmt key value =
   addEmpty :: Status -> (Status, IO ())
   addEmpty x = (x, return ())
 
--- | Called when we know that an error has occured.
-to_error :: SQLite -> IO (Either String a)
-to_error db = Left `fmap` (peekUtf8CString =<< sqlite3_errmsg db)
 
+-- | Called when we know that an error has occured.
+to_error :: Status -> SQLite -> IO (Either SQLiteErrorWithCode a)
+to_error statusCode db =
+    to_error' statusCode `fmap` (peekUtf8CString =<< sqlite3_errmsg db)
+        where to_error' status str = Left (status, str)
 
 
 -- | Prepare and execute a parameterized statment, ignoring the result.
@@ -259,7 +265,15 @@ execParamStatement_ db q ps =
 -- characters because that part of the column name will be ignored.
 execParamStatement :: SQLiteResult a => SQLiteHandle -> String
                    -> [(String,Value)] -> IO (Either String [[Row a]])
-execParamStatement h query params = withPrim h $ \ db ->
+execParamStatement h query params =
+    removeStatusCode <$> execParamStatementWithStatusCode h query params
+        where removeStatusCode = either (Left . snd) Right
+
+
+execParamStatementWithStatusCode :: SQLiteResult a
+                                 => SQLiteHandle -> String -> [(String, Value)]
+                                 -> IO (Either SQLiteErrorWithCode [[Row a]])
+execParamStatementWithStatusCode h query params =  withPrim h $ \ db ->
   alloca $ \stmt_ptr ->
   alloca $ \pzTail ->
   withUtf8CString query $ \zSql -> do
@@ -272,13 +286,13 @@ execParamStatement h query params = withPrim h $ \ db ->
       peek sqltxt_ptr >>= \ sqltxt ->
       ensure_ (peek sqltxt) (/= 0) (eReturn (reverse xs)) $
 
-      ensure_ (sqlite3_prepare db sqltxt (-1) stmt_ptr sqltxt_ptr)
-             (== sQLITE_OK) (to_error db)          $
+      ensure (sqlite3_prepare db sqltxt (-1) stmt_ptr sqltxt_ptr)
+             (== sQLITE_OK)     (flip to_error $ db)      $ \ _ ->
 
       ensure (peek stmt_ptr)
-             (not . isNullStmt)   (loop xs)        $ \ stmt ->
+             (not . isNullStmt) (const $ loop xs)         $ \ stmt ->
 
-      then_finalize db (recv_rows db stmt) stmt `ebind` \ x ->
+      then_finalize (recv_rows db stmt) stmt `ebind` \ x ->
       loop (x:xs)
 
   recv_rows db stmt =
@@ -299,15 +313,18 @@ execParamStatement h query params = withPrim h $ \ db ->
         get_rows db stmt cols col_names (row:rows)
       else if res == sQLITE_DONE
         then eReturn (reverse rows)
-      else to_error db
+      else to_error res db
 
-  then_finalize db m stmt = do
+  then_finalize m stmt = do
     (e, gcs) <- m
     _ <- sqlite3_finalize stmt
     sequence_ gcs
-    case e of
-      Left _ -> to_error db
-      Right r -> return (Right r)
+    return e
+
+
+execStatementWithStatusCode :: SQLiteResult a
+                            => SQLiteHandle -> String -> IO (Either SQLiteErrorWithCode [[Row a]])
+execStatementWithStatusCode db s = execParamStatementWithStatusCode db s []
 
 -- | Evaluate the SQL statement specified by 's'
 --
@@ -343,11 +360,11 @@ m `ebind` f = do x <- m
 eReturn :: Monad m => a -> m (Either e a)
 eReturn x = return $ Right x
 
-ensure :: Monad m => m a -> (a -> Bool) -> m b -> (a -> m b) -> m b
-ensure m p t f = m >>= \ x -> if p x then f x else t
+ensure :: Monad m => m a -> (a -> Bool) -> (a -> m b) -> (a -> m b) -> m b
+ensure m p t f = m >>= \ x -> if p x then f x else t x
 
 ensure_ :: Monad m => m a -> (a -> Bool) -> m b -> m b -> m b
-ensure_ m p t f = ensure m p t (const f)
+ensure_ m p t f = ensure m p (const t) (const f)
 
 
 class SQLiteResultPrivate a

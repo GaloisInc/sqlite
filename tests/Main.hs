@@ -62,6 +62,12 @@ insertManyRows h tab rows = chain insertions
                 Nothing -> chain is
                 Just err -> return $ Just err
 
+-- Some tests only test only test the error code, therefore Haskell can't resolve the
+-- SQLiteResult instance. This forces it to be a String.
+execStatementWithStatusCode' :: SQLiteHandle -> String
+                             -> IO (Either SQLiteErrorWithCode [[Row String]])
+execStatementWithStatusCode' = execStatementWithStatusCode
+
 
 spec :: Spec
 spec = parallel $ do
@@ -127,6 +133,12 @@ spec = parallel $ do
 
             result <- query [(":pattern", Text "Erika%")]
             result `shouldBe` Right [[[("name", "Erika Munstermann")]]]
+
+
+    describe "execParamStatementWithStatusCode" $ do
+        it "returns the status code from SQLite" $ withTempDB $ \h -> do
+            Left error <- execStatementWithStatusCode' h "SELECT nasuitenarusie"
+            fst error `shouldBe` sQLITE_ERROR
 
 
 main :: IO ()
