@@ -316,12 +316,7 @@ execStatement db s = execParamStatement db s []
 
 -- | Returns an error, or 'Nothing' if everything was OK.
 execStatement_ :: SQLiteHandle -> String -> IO (Maybe String)
-execStatement_ h sqlStmt = withPrim h $ \ db ->
-  withUtf8CString sqlStmt $ \ c_sqlStmt ->
-  sqlite3_exec db c_sqlStmt noCallback nullPtr nullPtr >>= \ st ->
-  if st == sQLITE_OK
-    then return Nothing
-    else fmap Just . peekUtf8CString =<< sqlite3_errmsg db
+execStatement_ db s = execParamStatement_ db s []
 
 tupled :: [String] -> String
 tupled xs = "(" ++ concat (intersperse ", " xs) ++ ")"
