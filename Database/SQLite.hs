@@ -34,8 +34,11 @@ module Database.SQLite
        , SQLiteResult
        , execStatement
        , execStatement_
+       , execStatementWithStatusCode
        , execParamStatement
        , execParamStatement_
+       , execParamStatementWithStatusCode
+       , SQLiteErrorWithCode
 
        -- * Basic insertion operations
        , insertRow
@@ -110,7 +113,7 @@ openConnection dbName =
 -- | Open a new database connection read-only, whose name is given
 -- by the 'dbName' argument. A sqlite3 handle is returned.
 --
--- An exception is thrown if the database does not exist, 
+-- An exception is thrown if the database does not exist,
 -- or could not be opened.
 --
 openReadonlyConnection :: String -> IO SQLiteHandle
@@ -137,6 +140,7 @@ withPrim (SQLiteHandle h) f = withForeignPtr h (f . SQLite)
 -- Adding data
 
 type Row a = [(ColumnName,a)]
+type SQLiteErrorWithCode = (Status, String)
 
 defineTableOpt :: SQLiteHandle -> Bool -> SQLTable -> IO (Maybe String)
 defineTableOpt h check tab = execStatement_ h (createTable tab)
@@ -239,10 +243,12 @@ bindValue stmt key value =
   addEmpty :: Status -> (Status, IO ())
   addEmpty x = (x, return ())
 
--- | Called when we know that an error has occured.
-to_error :: SQLite -> IO (Either String a)
-to_error db = Left `fmap` (peekUtf8CString =<< sqlite3_errmsg db)
 
+-- | Called when we know that an error has occured.
+to_error :: Status -> SQLite -> IO (Either SQLiteErrorWithCode a)
+to_error statusCode db =
+    to_error' statusCode `fmap` (peekUtf8CString =<< sqlite3_errmsg db)
+        where to_error' status str = Left (status, str)
 
 
 -- | Prepare and execute a parameterized statment, ignoring the result.
@@ -259,7 +265,15 @@ execParamStatement_ db q ps =
 -- characters because that part of the column name will be ignored.
 execParamStatement :: SQLiteResult a => SQLiteHandle -> String
                    -> [(String,Value)] -> IO (Either String [[Row a]])
-execParamStatement h query params = withPrim h $ \ db ->
+execParamStatement h query params =
+    removeStatusCode <$> execParamStatementWithStatusCode h query params
+        where removeStatusCode = either (Left . snd) Right
+
+
+execParamStatementWithStatusCode :: SQLiteResult a
+                                 => SQLiteHandle -> String -> [(String, Value)]
+                                 -> IO (Either SQLiteErrorWithCode [[Row a]])
+execParamStatementWithStatusCode h query params =  withPrim h $ \ db ->
   alloca $ \stmt_ptr ->
   alloca $ \pzTail ->
   withUtf8CString query $ \zSql -> do
@@ -272,13 +286,13 @@ execParamStatement h query params = withPrim h $ \ db ->
       peek sqltxt_ptr >>= \ sqltxt ->
       ensure_ (peek sqltxt) (/= 0) (eReturn (reverse xs)) $
 
-      ensure_ (sqlite3_prepare db sqltxt (-1) stmt_ptr sqltxt_ptr)
-             (== sQLITE_OK) (to_error db)          $
+      ensure (sqlite3_prepare db sqltxt (-1) stmt_ptr sqltxt_ptr)
+             (== sQLITE_OK)     (flip to_error $ db)      $ \ _ ->
 
       ensure (peek stmt_ptr)
-             (not . isNullStmt)   (loop xs)        $ \ stmt ->
+             (not . isNullStmt) (const $ loop xs)         $ \ stmt ->
 
-      then_finalize db (recv_rows db stmt) stmt `ebind` \ x ->
+      then_finalize (recv_rows db stmt) stmt `ebind` \ x ->
       loop (x:xs)
 
   recv_rows db stmt =
@@ -299,29 +313,40 @@ execParamStatement h query params = withPrim h $ \ db ->
         get_rows db stmt cols col_names (row:rows)
       else if res == sQLITE_DONE
         then eReturn (reverse rows)
-      else to_error db
+      else to_error res db
 
-  then_finalize db m stmt = do
+  then_finalize m stmt = do
     (e, gcs) <- m
     _ <- sqlite3_finalize stmt
     sequence_ gcs
-    case e of
-      Left _ -> to_error db
-      Right r -> return (Right r)
+    return e
 
--- | Evaluate the SQL statement specified by 'sqlStmt'
+
+execStatementWithStatusCode :: SQLiteResult a
+                            => SQLiteHandle -> String -> IO (Either SQLiteErrorWithCode [[Row a]])
+execStatementWithStatusCode db s = execParamStatementWithStatusCode db s []
+
+-- | Evaluate the SQL statement specified by 's'
+--
+-- Results have two levels of nesting because multiple SQL statements can be
+-- executed in order. These statements are separated by semi-colon.
+--
+-- Examples:
+--
+-- >>> :set -XScopedTypeVariables
+-- >>> let h = openConnection ":memory:"
+-- >>> execStatement h "CREATE TABLE foo(bar int)"
+-- >>> execStatement h "INSERT INTO foo(bar) VALUES (1), (2)"
+-- >>> execStatement h "SELECT bar as a FROM foo ORDER BY 1; SELECT 1 as b, 2 as c"
+-- Right [[[("a", "1")], [("a", "2")]], [[("b", "1), ("c", "2")]]]
+--
 execStatement :: SQLiteResult a
                => SQLiteHandle -> String -> IO (Either String [[Row a]])
 execStatement db s = execParamStatement db s []
 
 -- | Returns an error, or 'Nothing' if everything was OK.
 execStatement_ :: SQLiteHandle -> String -> IO (Maybe String)
-execStatement_ h sqlStmt = withPrim h $ \ db ->
-  withUtf8CString sqlStmt $ \ c_sqlStmt ->
-  sqlite3_exec db c_sqlStmt noCallback nullPtr nullPtr >>= \ st ->
-  if st == sQLITE_OK
-    then return Nothing
-    else fmap Just . peekUtf8CString =<< sqlite3_errmsg db
+execStatement_ db s = execParamStatement_ db s []
 
 tupled :: [String] -> String
 tupled xs = "(" ++ concat (intersperse ", " xs) ++ ")"
@@ -335,11 +360,11 @@ m `ebind` f = do x <- m
 eReturn :: Monad m => a -> m (Either e a)
 eReturn x = return $ Right x
 
-ensure :: Monad m => m a -> (a -> Bool) -> m b -> (a -> m b) -> m b
-ensure m p t f = m >>= \ x -> if p x then f x else t
+ensure :: Monad m => m a -> (a -> Bool) -> (a -> m b) -> (a -> m b) -> m b
+ensure m p t f = m >>= \ x -> if p x then f x else t x
 
 ensure_ :: Monad m => m a -> (a -> Bool) -> m b -> m b -> m b
-ensure_ m p t f = ensure m p t (const f)
+ensure_ m p t f = ensure m p (const t) (const f)
 
 
 class SQLiteResultPrivate a
@@ -472,7 +497,7 @@ type Arity = Int
 type FunctionName = String
 type FunctionHandler = SQLiteContext -> [SQLiteValue] -> IO ()
 
-class IsFunctionHandler a where 
+class IsFunctionHandler a where
     funcArity   :: a -> Arity
     funcHandler :: a -> FunctionHandler
 
@@ -617,13 +642,13 @@ set_aggr_context ctx x = do
 
 _SZ :: CInt
 _SZ = toEnum $ sizeOf nullPtr
- 
+
 step_callback :: IsValue v => a -> (a -> [v] -> IO a) -> StepHandler
 step_callback x f ctx argc argv = do
     args <- peekArray (fromEnum argc) argv
     aVal <- get_aggr_context x ctx
     newVal <- f aVal =<< mapM fromSQLiteValue args
-    set_aggr_context ctx newVal 
+    set_aggr_context ctx newVal
 
 createAggregatePrim :: (IsValue i, IsValue o) => SQLiteHandle -> FunctionName -> Arity -> (a -> [i] -> IO a) -> a -> (a -> IO o) -> IO ()
 createAggregatePrim h name arity step x finalize = do
@@ -642,7 +667,7 @@ createAggregatePrim h name arity step x finalize = do
                    finalizeFunc
     addSQLiteHandleFinalizer h (freeCallback stepFunc)
     addSQLiteHandleFinalizer h (freeCallback finalizeFunc)
-    
+
 class IsValue a where
     fromSQLiteValue     :: SQLiteValue -> IO a
     returnSQLiteValue   :: SQLiteContext -> a -> IO ()

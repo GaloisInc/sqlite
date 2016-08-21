@@ -51,15 +51,6 @@ withTempTable f = withTempDB $ \h ->
     defineTable h (newTable "names") >> f tab h
 
 
-flatExecStatement :: SQLiteResult a => SQLiteHandle -> String -> IO (Either String [Row a])
-flatExecStatement h sqlStmt =
-    let flattenResults = concat
-        mapResult f (Right r) = Right (f r)
-        mapResult f (Left l) = Left l
-
-    in mapResult flattenResults <$> execStatement h sqlStmt
-
-
 insertManyRows :: SQLiteHandle -> String -> [Row String] -> IO (Maybe String)
 insertManyRows h tab rows = chain insertions
     where insertions   = map (insertRow h tab) rows
@@ -71,17 +62,32 @@ insertManyRows h tab rows = chain insertions
                 Nothing -> chain is
                 Just err -> return $ Just err
 
+-- Some tests only test only test the error code, therefore Haskell can't resolve the
+-- SQLiteResult instance. This forces it to be a String.
+execStatementWithStatusCode' :: SQLiteHandle -> String
+                             -> IO (Either SQLiteErrorWithCode [[Row String]])
+execStatementWithStatusCode' = execStatementWithStatusCode
+
 
 spec :: Spec
 spec = parallel $ do
+    let rows = [ [ ("id", "1"), ("name", "Erika Munstermann"), ("age", "28") ]
+               , [ ("id", "2"), ("name", "Max Munstermann"), ("age", "24") ]
+               ]
+
+
     describe "execStatement and execStatement_" $ do
         it "runs select statements" $ withTempDB $ \h -> do
-            result <- flatExecStatement h "SELECT 'Hello, World' AS h"
-            result `shouldBe` Right [[("h", "Hello, World")]]
+            result <- execStatement h "SELECT 'Hello, World' AS h"
+            result `shouldBe` Right [[[("h", "Hello, World")]]]
 
         it "fails on bad SQL" $ withTempDB $ \h -> do
             error <- execStatement_ h "SELECT aieauie"
             error `shouldSatisfy` isJust
+
+        it "can execute multiple statements" $ withTempDB $ \h -> do
+            result <- execStatement h "SELECT 1 as a; SELECT 2 as b"
+            result `shouldBe` Right [[[("a", "1")]], [[("b", "2")]]]
 
 
     describe "insertRow" $ do
@@ -90,30 +96,49 @@ spec = parallel $ do
             error <- insertRow h tab row
             error `shouldSatisfy` isNothing
 
-            ls <- flatExecStatement h $ printf "SELECT * FROM %s" tab
-            ls `shouldBe` Right [row]
+            ls <- execStatement h $ printf "SELECT * FROM %s" tab
+            ls `shouldBe` Right [[row]]
 
 
         it "can be called many times" $ withTempTable $ \tab h -> do
-            let rows = [ [ ("id", "1"), ("name", "Erika Munstermann"), ("age", "28") ]
-                       , [ ("id", "2"), ("name", "Max Munstermann"), ("age", "24") ]
-                       ]
             error <- insertManyRows h tab rows
             error `shouldSatisfy` isNothing
 
-            ls <- flatExecStatement h $ printf "SELECT * FROM %s ORDER BY id" tab
-            ls `shouldBe` Right rows
+            ls <- execStatement h $ printf "SELECT * FROM %s ORDER BY id" tab
+            ls `shouldBe` Right [rows]
 
 
         it "fails on bad row insertion" $ withTempTable $ \tab h -> do
             error <- insertRow h tab [("foo", "bar")]
             error `shouldSatisfy` isJust
 
+
     describe "createFunction" $ do
         it "runs haskell code" $ withTempDB $ \h -> do
             createFunction h "hi" (sum :: [Int] -> Int)
-            ls <- flatExecStatement h "SELECT hi(1, 2, 3, 4, 5) AS greeting"
-            ls `shouldBe` Right [[("greeting", show $ sum [1, 2, 3, 4, 5])]]
+            ls <- execStatement h "SELECT hi(1, 2, 3, 4, 5) AS greeting"
+            ls `shouldBe` Right [[[("greeting", show $ sum [1, 2, 3, 4, 5])]]]
+
+
+    describe "execParamStatement" $ do
+        it "binds values" $ withTempTable $ \tab h -> do
+            error <- insertManyRows h tab rows
+            error `shouldSatisfy` isNothing
+
+            let query = execParamStatement h $
+                            printf "SELECT name FROM %s WHERE name like :pattern" tab
+
+            result <- query [(":pattern", Text "Max%")]
+            result `shouldBe` Right [[[("name", "Max Munstermann")]]]
+
+            result <- query [(":pattern", Text "Erika%")]
+            result `shouldBe` Right [[[("name", "Erika Munstermann")]]]
+
+
+    describe "execParamStatementWithStatusCode" $ do
+        it "returns the status code from SQLite" $ withTempDB $ \h -> do
+            Left error <- execStatementWithStatusCode' h "SELECT nasuitenarusie"
+            fst error `shouldBe` sQLITE_ERROR
 
 
 main :: IO ()
