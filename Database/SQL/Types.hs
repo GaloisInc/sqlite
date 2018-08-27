@@ -54,6 +54,7 @@ module Database.SQL.Types
 
 import Data.List ( intersperse )
 import Text.PrettyPrint.HughesPJ
+import Prelude hiding((<>))
 
 type DatabaseName = String
 type TableName = String
